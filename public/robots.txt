@@ -1,0 +1,58 @@
+# KRISHAK SATHI Public Agricultural Knowledge Hub & Crop Guides
+# Crawl Policy: Explicit search engine and AI search crawler access on public educational content.
+
+User-agent: Googlebot
+Allow: /
+Allow: /bn/
+Allow: /hi/
+Allow: /brand/
+Allow: /knowledge/
+Allow: /crops/
+Allow: /sitemap.xml
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /firebase/
+Disallow: /users/
+Disallow: /private/
+
+User-agent: OAI-SearchBot
+Allow: /
+Allow: /bn/
+Allow: /hi/
+Allow: /brand/
+Allow: /knowledge/
+Allow: /crops/
+Allow: /sitemap.xml
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /firebase/
+Disallow: /users/
+Disallow: /private/
+
+# Separate GPTBot directive (independent from OAI-SearchBot)
+User-agent: GPTBot
+Allow: /knowledge/
+Allow: /crops/
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /firebase/
+Disallow: /users/
+Disallow: /private/
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /firebase/
+Disallow: /users/
+Disallow: /private/
+
+Sitemap: https://ais-pre-2x4wg44pdpamhvdlijirfv-948907126237.asia-southeast1.run.app/sitemap.xml

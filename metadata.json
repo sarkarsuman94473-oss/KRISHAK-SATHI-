@@ -1,0 +1,7 @@
+{
+  "name": "Krishak Sathi",
+  "description": "Comprehensive, farmer-first agricultural assistant for crop care, tea gardens, disease diagnosis, land-based dosages, and direct marketplace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

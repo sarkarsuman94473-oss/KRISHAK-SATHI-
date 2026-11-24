@@ -1,0 +1,1429 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email == 'sarkarsuman94473@gmail.com' &&
+             request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // Farmer Profile
+    function isValidFarmerProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.preferredLanguage is string && data.preferredLanguage.size() <= 20 &&
+             (!('mobileNumber' in data) || data.mobileNumber == null || (data.mobileNumber is string && data.mobileNumber.size() <= 20)) &&
+             (!('village' in data) || data.village == null || (data.village is string && data.village.size() <= 100)) &&
+             (!('district' in data) || data.district == null || (data.district is string && data.district.size() <= 100)) &&
+             (!('state' in data) || data.state == null || (data.state is string && data.state.size() <= 100)) &&
+             (!('pinCode' in data) || data.pinCode == null || (data.pinCode is string && data.pinCode.size() <= 20)) &&
+             (!('farmSize' in data) || data.farmSize == null || data.farmSize is number) &&
+             (!('farmSizeUnit' in data) || data.farmSizeUnit == null || (data.farmSizeUnit is string && data.farmSizeUnit.size() <= 50)) &&
+             (!('mainCrops' in data) || data.mainCrops == null || (data.mainCrops is string && data.mainCrops.size() <= 200));
+    }
+
+    match /farmers/{farmerId} {
+      allow get: if isOwner(farmerId) || isAdmin();
+      allow list: if isSignedIn() && (request.auth.uid == farmerId || isAdmin());
+      allow create: if isOwner(farmerId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidFarmerProfile(incoming());
+      allow update: if (isOwner(farmerId) || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidFarmerProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'mobileNumber', 'village', 'district', 'state', 'pinCode', 'farmSize', 'farmSizeUnit', 'mainCrops', 'preferredLanguage', 'updatedAt']);
+      allow delete: if isOwner(farmerId) || isAdmin();
+    }
+
+    // Farmer Crops
+    function isValidFarmerCrop(data) {
+      return data.farmerId is string && data.farmerId == request.auth.uid &&
+             data.cropName is string && data.cropName.size() > 0 && data.cropName.size() <= 100 &&
+             data.plantingDate is string && data.plantingDate.size() <= 50 &&
+             data.landArea is number && data.landArea >= 0 &&
+             data.landUnit is string && data.landUnit.size() <= 50 &&
+             (!('cropCategory' in data) || data.cropCategory == null || (data.cropCategory is string && data.cropCategory.size() <= 50)) &&
+             (!('variety' in data) || data.variety == null || (data.variety is string && data.variety.size() <= 100)) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 500));
+    }
+
+    match /farmer_crops/{cropId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().farmerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidFarmerCrop(incoming());
+      allow update: if isSignedIn() &&
+                       resource.data.farmerId == request.auth.uid &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidFarmerCrop(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['cropName', 'cropCategory', 'plantingDate', 'landArea', 'landUnit', 'variety', 'notes', 'updatedAt']);
+      allow delete: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+    }
+
+    // Tea Gardens
+    function isValidTeaGarden(data) {
+      return data.farmerId is string && data.farmerId == request.auth.uid &&
+             data.gardenName is string && data.gardenName.size() > 0 && data.gardenName.size() <= 100 &&
+             data.totalLand is number && data.totalLand >= 0 &&
+             data.landUnit is string && data.landUnit.size() <= 50 &&
+             (!('location' in data) || data.location == null || (data.location is string && data.location.size() <= 100)) &&
+             (!('teaVariety' in data) || data.teaVariety == null || (data.teaVariety is string && data.teaVariety.size() <= 100)) &&
+             (!('plantAgeYears' in data) || data.plantAgeYears == null || data.plantAgeYears is number) &&
+             (!('plantingYear' in data) || data.plantingYear == null || data.plantingYear is number) &&
+             (!('sectionsCount' in data) || data.sectionsCount == null || data.sectionsCount is number) &&
+             (!('irrigationAvailable' in data) || data.irrigationAvailable == null || data.irrigationAvailable is bool) &&
+             (!('shadeTreesInfo' in data) || data.shadeTreesInfo == null || (data.shadeTreesInfo is string && data.shadeTreesInfo.size() <= 200)) &&
+             (!('lastPruningDate' in data) || data.lastPruningDate == null || (data.lastPruningDate is string && data.lastPruningDate.size() <= 50));
+    }
+
+    match /tea_gardens/{gardenId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().farmerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTeaGarden(incoming());
+      allow update: if isSignedIn() &&
+                       resource.data.farmerId == request.auth.uid &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTeaGarden(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['gardenName', 'location', 'totalLand', 'landUnit', 'teaVariety', 'plantAgeYears', 'plantingYear', 'sectionsCount', 'irrigationAvailable', 'shadeTreesInfo', 'lastPruningDate', 'updatedAt']);
+      allow delete: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+    }
+
+    // Produce Listings
+    function isValidProduceListing(data) {
+      return data.farmerId is string && data.farmerId == request.auth.uid &&
+             data.farmerName is string && data.farmerName.size() > 0 && data.farmerName.size() <= 100 &&
+             data.product is string && data.product.size() > 0 && data.product.size() <= 100 &&
+             data.quantity is number && data.quantity > 0 &&
+             data.unit is string && data.unit.size() <= 20 &&
+             data.expectedPricePerUnit is number && data.expectedPricePerUnit >= 0 &&
+             data.location is string && data.location.size() <= 100 &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('farmerPhone' in data) || data.farmerPhone == null || (data.farmerPhone is string && data.farmerPhone.size() <= 30)) &&
+             (!('category' in data) || data.category == null || (data.category is string && data.category.size() <= 50)) &&
+             (!('harvestDate' in data) || data.harvestDate == null || (data.harvestDate is string && data.harvestDate.size() <= 50)) &&
+             (!('deliveryAvailable' in data) || data.deliveryAvailable == null || data.deliveryAvailable is bool);
+    }
+
+    match /produce_listings/{listingId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       incoming().farmerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidProduceListing(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.farmerId == request.auth.uid || isAdmin()) &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidProduceListing(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['product', 'category', 'quantity', 'unit', 'expectedPricePerUnit', 'harvestDate', 'location', 'deliveryAvailable', 'status', 'updatedAt']);
+      allow delete: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+    }
+
+    // Buyer Offers
+    function isValidBuyerOffer(data) {
+      return data.listingId is string && data.listingId.size() <= 128 &&
+             data.farmerId is string && data.farmerId.size() <= 128 &&
+             data.buyerId is string && data.buyerId.size() <= 128 &&
+             data.offeredPricePerUnit is number && data.offeredPricePerUnit >= 0 &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('buyerName' in data) || data.buyerName == null || (data.buyerName is string && data.buyerName.size() <= 100)) &&
+             (!('buyerType' in data) || data.buyerType == null || (data.buyerType is string && data.buyerType.size() <= 50)) &&
+             (!('buyerPhone' in data) || data.buyerPhone == null || (data.buyerPhone is string && data.buyerPhone.size() <= 30)) &&
+             (!('counterPricePerUnit' in data) || data.counterPricePerUnit == null || data.counterPricePerUnit is number) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 300));
+    }
+
+    match /buyer_offers/{offerId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().buyerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidBuyerOffer(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin()) &&
+                       incoming().listingId == existing().listingId &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().buyerId == existing().buyerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidBuyerOffer(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'counterPricePerUnit', 'offeredPricePerUnit', 'notes', 'updatedAt']);
+      allow delete: if isSignedIn() && (resource.data.buyerId == request.auth.uid || isAdmin());
+    }
+
+    // Orders
+    function isValidOrder(data) {
+      return data.listingId is string && data.listingId.size() <= 128 &&
+             data.farmerId is string && data.farmerId.size() <= 128 &&
+             data.buyerId is string && data.buyerId.size() <= 128 &&
+             data.product is string && data.product.size() > 0 && data.product.size() <= 100 &&
+             data.quantity is number && data.quantity > 0 &&
+             data.agreedPricePerUnit is number && data.agreedPricePerUnit >= 0 &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('unit' in data) || data.unit == null || (data.unit is string && data.unit.size() <= 20)) &&
+             (!('paymentMethod' in data) || data.paymentMethod == null || (data.paymentMethod is string && data.paymentMethod.size() <= 50)) &&
+             (!('pickupPhotoUrl' in data) || data.pickupPhotoUrl == null || (data.pickupPhotoUrl is string && data.pickupPhotoUrl.size() <= 500)) &&
+             (!('weightConfirmedKg' in data) || data.weightConfirmedKg == null || data.weightConfirmedKg is number);
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       (incoming().farmerId == request.auth.uid || incoming().buyerId == request.auth.uid) &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidOrder(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.farmerId == request.auth.uid || resource.data.buyerId == request.auth.uid || isAdmin()) &&
+                       incoming().listingId == existing().listingId &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().buyerId == existing().buyerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidOrder(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentMethod', 'pickupPhotoUrl', 'weightConfirmedKg', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // Farmer Expenses
+    function isValidFarmerExpense(data) {
+      return data.farmerId is string && data.farmerId == request.auth.uid &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 50 &&
+             data.amount is number && data.amount >= 0 &&
+             data.dateMillis is number &&
+             (!('cropId' in data) || data.cropId == null || (data.cropId is string && data.cropId.size() <= 128)) &&
+             (!('cropName' in data) || data.cropName == null || (data.cropName is string && data.cropName.size() <= 100)) &&
+             (!('note' in data) || data.note == null || (data.note is string && data.note.size() <= 300));
+    }
+
+    match /farmer_expenses/{expenseId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().farmerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidFarmerExpense(incoming());
+      allow update: if isSignedIn() &&
+                       resource.data.farmerId == request.auth.uid &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidFarmerExpense(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['category', 'amount', 'dateMillis', 'cropId', 'cropName', 'note']);
+      allow delete: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+    }
+
+    // Expert Inquiries
+    function isValidExpertInquiry(data) {
+      return data.farmerId is string && data.farmerId.size() <= 128 &&
+             data.farmerName is string && data.farmerName.size() > 0 && data.farmerName.size() <= 100 &&
+             data.question is string && data.question.size() > 0 && data.question.size() <= 1000 &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('crop' in data) || data.crop == null || (data.crop is string && data.crop.size() <= 100)) &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             (!('reply' in data) || data.reply == null || (data.reply is string && data.reply.size() <= 1500));
+    }
+
+    match /expert_inquiries/{inquiryId} {
+      allow get: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().farmerId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidExpertInquiry(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.farmerId == request.auth.uid || isAdmin()) &&
+                       incoming().farmerId == existing().farmerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidExpertInquiry(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['reply', 'status', 'updatedAt']);
+      allow delete: if isSignedIn() && (resource.data.farmerId == request.auth.uid || isAdmin());
+    }
+
+    // Nursery Applications & Role Verification
+    match /nursery_applications/{applicationId} {
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.status == 'APPROVED' ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.status == 'APPROVED'
+      );
+      allow create: if isSignedIn() &&
+                       incoming().userId == request.auth.uid &&
+                       (incoming().status == 'PENDING' || incoming().status == 'DRAFT') &&
+                       incoming().nurseryNameBn is string &&
+                       incoming().applicantName is string;
+      allow update: if isSignedIn() && (
+        // Admin can review, approve, reject, or suspend
+        isAdmin() ||
+        // Applicant can update details if not approved yet, but cannot grant approval to themselves
+        (resource.data.userId == request.auth.uid &&
+         incoming().userId == existing().userId &&
+         incoming().status != 'APPROVED' &&
+         incoming().status != 'SUSPENDED')
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid && existing().status == 'DRAFT');
+    }
+
+    // Nursery Products
+    match /nursery_products/{productId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (incoming().sellerUserId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin() ||
+        // Customer placing order or cancelling order can update availableStock / reservedStock
+        incoming().diff(existing()).affectedKeys().hasOnly(['availableStock', 'reservedStock', 'updatedAt'])
+      );
+      allow delete: if isSignedIn() && (resource.data.sellerUserId == request.auth.uid || isAdmin());
+    }
+
+    // Nursery Orders
+    match /nursery_orders/{orderId} {
+      allow get: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && incoming().customerId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // COMMUNITY FORUM & ADMIN MODERATION
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && !id.matches('.*[/\\\\].*');
+    }
+
+    function isNotForumRestricted(uid) {
+      return !exists(/databases/$(database)/documents/forum_user_moderation/$(uid)) ||
+             get(/databases/$(database)/documents/forum_user_moderation/$(uid)).data.status in ['ACTIVE', 'WARNED'] ||
+             (get(/databases/$(database)/documents/forum_user_moderation/$(uid)).data.status == 'MUTED' &&
+              get(/databases/$(database)/documents/forum_user_moderation/$(uid)).data.mutedUntilMillis > 0 &&
+              request.time.toMillis() >= get(/databases/$(database)/documents/forum_user_moderation/$(uid)).data.mutedUntilMillis);
+    }
+
+    function isValidForumPost(data) {
+      return isValidId(data.authorId) &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             data.authorRole is string && data.authorRole.size() >= 1 && data.authorRole.size() <= 30 &&
+             data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+             data.content is string && data.content.size() >= 5 && data.content.size() <= 3000 &&
+             data.topic in ['CROP_CARE', 'PEST_DISEASE', 'IRRIGATION_SOIL', 'SEEDS_NURSERY', 'MARKET_SCHEMES', 'TIPS_SUCCESS'] &&
+             isValidId(data.cropId) &&
+             data.cropName is string && data.cropName.size() >= 1 && data.cropName.size() <= 120 &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0 &&
+             data.reportCount is int && data.reportCount >= 0 &&
+             data.moderationStatus in ['APPROVED', 'FLAGGED', 'HIDDEN'] &&
+             data.pinned is bool &&
+             (!('moderationReason' in data) || (data.moderationReason is string && data.moderationReason.size() <= 300)) &&
+             !('id' in data);
+    }
+
+    function isValidForumComment(data, postId) {
+      return isValidId(data.postId) && data.postId == postId &&
+             isValidId(data.authorId) &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 100 &&
+             data.authorRole is string && data.authorRole.size() >= 1 && data.authorRole.size() <= 30 &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 1500 &&
+             data.moderationStatus in ['APPROVED', 'FLAGGED', 'HIDDEN'] &&
+             data.reportCount is int && data.reportCount >= 0 &&
+             (!('moderationReason' in data) || (data.moderationReason is string && data.moderationReason.size() <= 300)) &&
+             !('id' in data);
+    }
+
+    function isValidForumReport(data) {
+      return data.targetType in ['POST', 'COMMENT'] &&
+             isValidId(data.postId) &&
+             (!('commentId' in data) || (data.commentId is string && data.commentId.size() <= 128)) &&
+             isValidId(data.targetAuthorId) &&
+             data.targetAuthorName is string && data.targetAuthorName.size() >= 1 && data.targetAuthorName.size() <= 100 &&
+             (!('targetPreview' in data) || (data.targetPreview is string && data.targetPreview.size() <= 300)) &&
+             isValidId(data.reporterId) &&
+             data.reporterName is string && data.reporterName.size() >= 1 && data.reporterName.size() <= 100 &&
+             data.reason in ['SPAM', 'MISINFORMATION', 'ABUSIVE', 'WRONG_CATEGORY', 'OTHER'] &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 500)) &&
+             data.status in ['PENDING', 'RESOLVED', 'DISMISSED'] &&
+             (!('adminActionNote' in data) || (data.adminActionNote is string && data.adminActionNote.size() <= 300)) &&
+             !('id' in data);
+    }
+
+    function isValidForumUserModeration(data, userId) {
+      return isValidId(data.userId) && data.userId == userId &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100 &&
+             data.status in ['ACTIVE', 'WARNED', 'MUTED', 'BANNED'] &&
+             data.warningCount is int && data.warningCount >= 0 && data.warningCount <= 100 &&
+             (!('moderationReason' in data) || (data.moderationReason is string && data.moderationReason.size() <= 300)) &&
+             data.mutedUntilMillis is int && data.mutedUntilMillis >= 0 &&
+             (!('updatedByAdmin' in data) || (data.updatedByAdmin is string && data.updatedByAdmin.size() <= 128)) &&
+             !('id' in data);
+    }
+
+    match /forum_posts/{postId} {
+      allow get: if isSignedIn() && (
+        resource.data.moderationStatus in ['APPROVED', 'FLAGGED'] ||
+        resource.data.authorId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.moderationStatus in ['APPROVED', 'FLAGGED'] ||
+        resource.data.authorId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isNotForumRestricted(request.auth.uid) &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().likesCount == 0 &&
+                       incoming().commentsCount == 0 &&
+                       incoming().reportCount == 0 &&
+                       (incoming().moderationStatus == 'APPROVED' || isAdmin()) &&
+                       (incoming().pinned == false || isAdmin()) &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumPost(incoming());
+      allow update: if isSignedIn() &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumPost(incoming()) && (
+                         (
+                           isAdmin() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['moderationStatus', 'pinned', 'moderationReason', 'updatedAt'])
+                         ) ||
+                         (
+                           isNotForumRestricted(request.auth.uid) &&
+                           existing().authorId == request.auth.uid &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'topic', 'cropId', 'cropName', 'updatedAt'])
+                         ) ||
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'commentsCount', 'reportCount', 'moderationStatus', 'updatedAt']) &&
+                           (incoming().moderationStatus == existing().moderationStatus || (existing().moderationStatus == 'APPROVED' && incoming().moderationStatus == 'FLAGGED')) &&
+                           (incoming().likesCount - existing().likesCount >= -1 && incoming().likesCount - existing().likesCount <= 1) &&
+                           (incoming().commentsCount - existing().commentsCount >= -1 && incoming().commentsCount - existing().commentsCount <= 1) &&
+                           (incoming().reportCount >= existing().reportCount && incoming().reportCount <= existing().reportCount + 1)
+                         )
+                       );
+      allow delete: if isSignedIn() && (existing().authorId == request.auth.uid || isAdmin());
+
+      match /likes/{userId} {
+        allow get, list: if isSignedIn();
+        allow create: if isOwner(userId) &&
+                         incoming().keys().hasOnly(['userId', 'createdAt']) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt);
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /comments/{commentId} {
+        allow get: if isSignedIn() && (
+          resource.data.moderationStatus in ['APPROVED', 'FLAGGED'] ||
+          resource.data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+        allow list: if isSignedIn() && (
+          resource.data.moderationStatus in ['APPROVED', 'FLAGGED'] ||
+          resource.data.authorId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isSignedIn() &&
+                         isValidId(commentId) &&
+                         isNotForumRestricted(request.auth.uid) &&
+                         incoming().authorId == request.auth.uid &&
+                         incoming().reportCount == 0 &&
+                         (incoming().moderationStatus == 'APPROVED' || isAdmin()) &&
+                         incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                         incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                         isValidForumComment(incoming(), postId);
+        allow update: if isSignedIn() &&
+                         incoming().postId == existing().postId &&
+                         incoming().authorId == existing().authorId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                         isValidForumComment(incoming(), postId) && (
+                           (
+                             isAdmin() &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['moderationStatus', 'moderationReason', 'updatedAt'])
+                           ) ||
+                           (
+                             isNotForumRestricted(request.auth.uid) &&
+                             existing().authorId == request.auth.uid &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['content', 'updatedAt'])
+                           ) ||
+                           (
+                             incoming().diff(existing()).affectedKeys().hasOnly(['reportCount', 'moderationStatus', 'updatedAt']) &&
+                             (incoming().moderationStatus == existing().moderationStatus || (existing().moderationStatus == 'APPROVED' && incoming().moderationStatus == 'FLAGGED')) &&
+                             (incoming().reportCount >= existing().reportCount && incoming().reportCount <= existing().reportCount + 1)
+                           )
+                         );
+        allow delete: if isSignedIn() && (existing().authorId == request.auth.uid || isAdmin());
+      }
+    }
+
+    match /forum_reports/{reportId} {
+      allow get: if isSignedIn() && (resource.data.reporterId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.reporterId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().reporterId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumReport(incoming());
+      allow update: if isAdmin() &&
+                       incoming().reporterId == existing().reporterId &&
+                       incoming().postId == existing().postId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumReport(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminActionNote', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    match /forum_user_moderation/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() &&
+                       isValidId(userId) &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumUserModeration(incoming(), userId);
+      allow update: if isAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidForumUserModeration(incoming(), userId) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['userName', 'status', 'warningCount', 'moderationReason', 'mutedUntilMillis', 'updatedByAdmin', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // GOVERNMENT FARMER SCHEMES DIRECTORY
+    // =========================================================================
+    function isValidHttpsUrl(url) {
+      return url is string && url.size() >= 10 && url.size() <= 500 && url.matches('^https://[^\\s]+$');
+    }
+
+    function isValidGovernmentScheme(data) {
+      return data.govLevel in ['CENTRAL', 'WEST_BENGAL', 'OTHER_STATE'] &&
+             data.category in [
+               'CENTRAL_SCHEMES', 'WEST_BENGAL_SCHEMES', 'OTHER_STATE_SCHEMES',
+               'FINANCIAL_ASSISTANCE', 'CROP_INSURANCE', 'KCC_LOANS',
+               'IRRIGATION_WATER', 'SEEDS_SOIL', 'MACHINERY_EQUIPMENT',
+               'ORGANIC_NATURAL', 'HORTICULTURE_FRUITS_VEG', 'TEA_JUTE_COMMERCIAL',
+               'FISHERIES_DAIRY_LIVESTOCK', 'PENSION_SOCIAL_SECURITY', 'FPO_AGRIBUSINESS',
+               'MARKETING_STORAGE_INFRA', 'WOMEN_SMALL_FARMERS', 'ALLIED_OTHER'
+             ] &&
+             data.extraCategories is list && data.extraCategories.size() <= 10 &&
+             data.farmerTypes is list && data.farmerTypes.size() <= 10 &&
+             data.activityFocus is string && data.activityFocus.size() >= 1 && data.activityFocus.size() <= 50 &&
+             data.northBengalPriority is int && data.northBengalPriority >= 0 && data.northBengalPriority <= 100 &&
+             data.discontinued is bool &&
+             data.applicationStatus in ['OPEN', 'CLOSED', 'UPCOMING', 'INFO_ONLY', 'DISCONTINUED'] &&
+             isValidHttpsUrl(data.officialUrl) &&
+             isValidHttpsUrl(data.officialSourceUrl) &&
+             data.lastVerifiedDate is string && data.lastVerifiedDate.size() >= 4 && data.lastVerifiedDate.size() <= 30 &&
+             data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 200 &&
+             data.nameBn is string && data.nameBn.size() >= 2 && data.nameBn.size() <= 200 &&
+             data.nameHi is string && data.nameHi.size() >= 2 && data.nameHi.size() <= 200 &&
+             data.departmentEn is string && data.departmentEn.size() >= 2 && data.departmentEn.size() <= 200 &&
+             data.departmentBn is string && data.departmentBn.size() >= 2 && data.departmentBn.size() <= 200 &&
+             data.departmentHi is string && data.departmentHi.size() >= 2 && data.departmentHi.size() <= 200 &&
+             (!('shortDescEn' in data) || (data.shortDescEn is string && data.shortDescEn.size() <= 600)) &&
+             (!('shortDescBn' in data) || (data.shortDescBn is string && data.shortDescBn.size() <= 600)) &&
+             (!('shortDescHi' in data) || (data.shortDescHi is string && data.shortDescHi.size() <= 600)) &&
+             (!('objectivesEn' in data) || (data.objectivesEn is string && data.objectivesEn.size() <= 1000)) &&
+             (!('objectivesBn' in data) || (data.objectivesBn is string && data.objectivesBn.size() <= 1000)) &&
+             (!('objectivesHi' in data) || (data.objectivesHi is string && data.objectivesHi.size() <= 1000)) &&
+             (!('whoCanApplyEn' in data) || (data.whoCanApplyEn is string && data.whoCanApplyEn.size() <= 800)) &&
+             (!('whoCanApplyBn' in data) || (data.whoCanApplyBn is string && data.whoCanApplyBn.size() <= 800)) &&
+             (!('whoCanApplyHi' in data) || (data.whoCanApplyHi is string && data.whoCanApplyHi.size() <= 800)) &&
+             (!('eligibilityEn' in data) || (data.eligibilityEn is string && data.eligibilityEn.size() <= 1200)) &&
+             (!('eligibilityBn' in data) || (data.eligibilityBn is string && data.eligibilityBn.size() <= 1200)) &&
+             (!('eligibilityHi' in data) || (data.eligibilityHi is string && data.eligibilityHi.size() <= 1200)) &&
+             (!('documentsEn' in data) || (data.documentsEn is string && data.documentsEn.size() <= 1000)) &&
+             (!('documentsBn' in data) || (data.documentsBn is string && data.documentsBn.size() <= 1000)) &&
+             (!('documentsHi' in data) || (data.documentsHi is string && data.documentsHi.size() <= 1000)) &&
+             (!('benefitsEn' in data) || (data.benefitsEn is string && data.benefitsEn.size() <= 1200)) &&
+             (!('benefitsBn' in data) || (data.benefitsBn is string && data.benefitsBn.size() <= 1200)) &&
+             (!('benefitsHi' in data) || (data.benefitsHi is string && data.benefitsHi.size() <= 1200)) &&
+             (!('procedureEn' in data) || (data.procedureEn is string && data.procedureEn.size() <= 1200)) &&
+             (!('procedureBn' in data) || (data.procedureBn is string && data.procedureBn.size() <= 1200)) &&
+             (!('procedureHi' in data) || (data.procedureHi is string && data.procedureHi.size() <= 1200)) &&
+             (!('statusNoteEn' in data) || (data.statusNoteEn is string && data.statusNoteEn.size() <= 500)) &&
+             (!('statusNoteBn' in data) || (data.statusNoteBn is string && data.statusNoteBn.size() <= 500)) &&
+             (!('statusNoteHi' in data) || (data.statusNoteHi is string && data.statusNoteHi.size() <= 500)) &&
+             (!('cropTagsEn' in data) || (data.cropTagsEn is string && data.cropTagsEn.size() <= 300)) &&
+             (!('cropTagsBn' in data) || (data.cropTagsBn is string && data.cropTagsBn.size() <= 300)) &&
+             (!('cropTagsHi' in data) || (data.cropTagsHi is string && data.cropTagsHi.size() <= 300)) &&
+             (!('updatedByAdmin' in data) || (data.updatedByAdmin is string && data.updatedByAdmin.size() <= 128)) &&
+             !('id' in data);
+    }
+
+    match /government_schemes/{schemeId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() &&
+                       isValidId(schemeId) &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidGovernmentScheme(incoming());
+      allow update: if isAdmin() &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidGovernmentScheme(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // AI AGRICULTURE INTELLIGENCE SYSTEM (DUAL-AI CONFIG, RAG, TELEMETRY, FEEDBACK)
+    // =========================================================================
+    function isValidAiAdminConfig(data) {
+      return data.primaryProvider in ['GEMINI', 'OPENAI'] &&
+             data.backupProviderEnabled is bool &&
+             data.geminiModelName is string && data.geminiModelName.size() >= 3 && data.geminiModelName.size() <= 64 &&
+             data.openAiModelName is string && data.openAiModelName.size() >= 3 && data.openAiModelName.size() <= 64 &&
+             data.openAiProxyUrl is string &&
+             (data.openAiProxyUrl == '' || isValidHttpsUrl(data.openAiProxyUrl)) &&
+             data.timeoutMs is int && data.timeoutMs >= 5000 && data.timeoutMs <= 60000 &&
+             data.maxRetriesPerProvider is int && data.maxRetriesPerProvider >= 0 && data.maxRetriesPerProvider <= 1 &&
+             data.rateLimitPerMinute is int && data.rateLimitPerMinute >= 1 && data.rateLimitPerMinute <= 60 &&
+             data.dailyQuotaPerUser is int && data.dailyQuotaPerUser >= 5 && data.dailyQuotaPerUser <= 500 &&
+             data.enableRagCitations is bool &&
+             data.enableWeatherContext is bool &&
+             (!('updatedByAdmin' in data) || (data.updatedByAdmin is string && data.updatedByAdmin.size() <= 128)) &&
+             // Never allow storing API keys or secrets inside client-readable config
+             !('apiKey' in data) &&
+             !('openAiApiKey' in data) &&
+             !('geminiApiKey' in data) &&
+             !('secret' in data) &&
+             !('token' in data);
+    }
+
+    function isValidAiKnowledgeDoc(data) {
+      return data.titleEn is string && data.titleEn.size() >= 2 && data.titleEn.size() <= 200 &&
+             data.titleBn is string && data.titleBn.size() <= 200 &&
+             data.titleHi is string && data.titleHi.size() <= 200 &&
+             data.institution is string && data.institution.size() >= 2 && data.institution.size() <= 150 &&
+             isValidHttpsUrl(data.sourceUrl) &&
+             data.category is string && data.category.size() >= 2 && data.category.size() <= 60 &&
+             data.summaryEn is string && data.summaryEn.size() >= 5 && data.summaryEn.size() <= 1500 &&
+             data.isActive is bool &&
+             !('id' in data);
+    }
+
+    function isValidAiTelemetryLog(data) {
+      return isValidId(data.userId) &&
+             data.assistantMode in ['FARMER_AI', 'PLANT_PROBLEM', 'GENERAL_AI'] &&
+             data.cropId is string && data.cropId.size() <= 64 &&
+             data.providerUsed in ['GEMINI', 'OPENAI'] &&
+             data.modelUsed is string && data.modelUsed.size() <= 64 &&
+             data.fallbackUsed is bool &&
+             data.success is bool &&
+             data.errorCode is string && data.errorCode.size() <= 40 &&
+             data.errorSummary is string && data.errorSummary.size() <= 200 &&
+             data.latencyMs is int && data.latencyMs >= 0 &&
+             data.estimatedTokens is int && data.estimatedTokens >= 0 &&
+             data.estimatedCostUsd is number && data.estimatedCostUsd >= 0 &&
+             // Privacy rule: forbid raw user prompt/query text in telemetry logs
+             !('prompt' in data) &&
+             !('query' in data) &&
+             !('userText' in data) &&
+             !('response' in data) &&
+             !('id' in data);
+    }
+
+    function isValidAiFeedback(data) {
+      return isValidId(data.userId) &&
+             data.assistantMode in ['FARMER_AI', 'PLANT_PROBLEM', 'GENERAL_AI'] &&
+             data.cropId is string && data.cropId.size() <= 64 &&
+             data.providerUsed in ['GEMINI', 'OPENAI'] &&
+             data.helpful is bool &&
+             data.messagePreview is string && data.messagePreview.size() <= 240 &&
+             data.farmerNote is string && data.farmerNote.size() <= 300 &&
+             data.reviewStatus in ['OPEN', 'REVIEWED'] &&
+             !('id' in data);
+    }
+
+    match /ai_admin_config/{configId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(configId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidAiAdminConfig(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /ai_knowledge_docs/{docId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() &&
+                       isValidId(docId) &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidAiKnowledgeDoc(incoming());
+      allow update: if isAdmin() &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidAiKnowledgeDoc(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /ai_telemetry_logs/{logId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(logId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       isValidAiTelemetryLog(incoming());
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /ai_feedback/{feedbackId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(feedbackId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().reviewStatus == 'OPEN' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidAiFeedback(incoming());
+      allow update: if isAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidAiFeedback(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['reviewStatus', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // GLOBAL AI SEARCH DISCOVERY & SEO MANAGEMENT SYSTEM
+    // =========================================================================
+    function isValidSeoArticle(data) {
+      return data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 128 &&
+             data.category is string && data.category.size() >= 2 && data.category.size() <= 60 &&
+             data.cropId is string && data.cropId.size() <= 64 &&
+             data.status in ['DRAFT', 'AI_DRAFT_PENDING_REVIEW', 'PUBLISHED', 'ARCHIVED'] &&
+             data.titleEn is string && data.titleEn.size() >= 2 && data.titleEn.size() <= 200 &&
+             data.titleBn is string && data.titleBn.size() <= 200 &&
+             data.titleHi is string && data.titleHi.size() <= 200 &&
+             data.summaryEn is string && data.summaryEn.size() >= 5 && data.summaryEn.size() <= 600 &&
+             data.summaryBn is string && data.summaryBn.size() <= 600 &&
+             data.summaryHi is string && data.summaryHi.size() <= 600 &&
+             data.sourceName is string && data.sourceName.size() >= 2 && data.sourceName.size() <= 150 &&
+             isValidHttpsUrl(data.sourceUrl) &&
+             isValidHttpsUrl(data.canonicalUrl) &&
+             data.lastUpdatedDate is string && data.lastUpdatedDate.size() <= 30 &&
+             data.isAiAssisted is bool &&
+             data.reviewedBy is string && data.reviewedBy.size() <= 128 &&
+             !('id' in data) &&
+             !('apiKey' in data) &&
+             !('secret' in data);
+    }
+
+    function isValidSeoConfig(data) {
+      return isValidHttpsUrl(data.baseWebUrl) &&
+             data.googleSearchConsoleToken is string && data.googleSearchConsoleToken.size() <= 128 &&
+             data.allowGooglebot is bool &&
+             data.allowOaiSearchBot is bool &&
+             data.allowGptBot is bool &&
+             data.playStoreStatus is string && data.playStoreStatus.size() <= 40 &&
+             data.updatedBy is string && data.updatedBy.size() <= 128 &&
+             !('id' in data) &&
+             !('apiKey' in data) &&
+             !('openAiApiKey' in data) &&
+             !('geminiApiKey' in data) &&
+             !('secret' in data) &&
+             !('privateKey' in data);
+    }
+
+    function isValidSeoAnalyticsEvent(data) {
+      return data.sourceBucket in ['google_search', 'chatgpt_search', 'gemini_discovery', 'other_search', 'external_referral', 'direct', 'in_app', 'in_app_read', 'web_outbound'] &&
+             data.targetSlug is string && data.targetSlug.size() >= 1 && data.targetSlug.size() <= 128 &&
+             data.languageCode in ['en', 'bn', 'hi'] &&
+             // Strict zero-PII enforcement
+             !('email' in data) &&
+             !('phone' in data) &&
+             !('ip' in data) &&
+             !('userId' in data) &&
+             !('id' in data);
+    }
+
+    match /seo_articles/{articleId} {
+      allow get, list: if resource.data.status == 'PUBLISHED' || isAdmin();
+      allow create, update: if isAdmin() &&
+                               isValidId(articleId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidSeoArticle(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /seo_config/{configId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(configId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidSeoConfig(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /seo_analytics/{eventId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(eventId) &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       isValidSeoAnalyticsEvent(incoming());
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // PLANT KINGDOM MASTER LIBRARY & WEST BENGAL NURSERY DIRECTORY
+    // =========================================================================
+    function isValidPlantKingdomEntry(data) {
+      return data.plantId is string && data.plantId.size() >= 1 && data.plantId.size() <= 128 &&
+             data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 200 &&
+             data.nameBn is string && data.nameBn.size() <= 200 &&
+             data.nameHi is string && data.nameHi.size() <= 200 &&
+             data.scientificName is string && data.scientificName.size() <= 200 &&
+             data.primaryGroup in ['HIMALAYAN_HILL_FLOWERS', 'COMMON_FLOWERS', 'SEASONAL_FLOWERS', 'MONEY_INDOOR_PLANTS', 'FRUIT_PLANTS', 'ORNAMENTAL_TREES_CLIMBERS', 'MEDICINAL_HERBS_SUCCULENTS'] &&
+             data.secondaryGroupsCsv is string && data.secondaryGroupsCsv.size() <= 400 &&
+             data.filterTagsCsv is string && data.filterTagsCsv.size() <= 400 &&
+             data.seasonalTagsCsv is string && data.seasonalTagsCsv.size() <= 400 &&
+             data.descriptionEn is string && data.descriptionEn.size() <= 2000 &&
+             data.descriptionBn is string && data.descriptionBn.size() <= 2000 &&
+             data.descriptionHi is string && data.descriptionHi.size() <= 2000 &&
+             data.visualAssetKey is string && data.visualAssetKey.size() <= 160 &&
+             data.customPhotoUri is string && data.customPhotoUri.size() <= 1000 &&
+             data.climate is string && data.climate.size() <= 400 &&
+             data.temperatureRange is string && data.temperatureRange.size() <= 200 &&
+             data.soilRequirements is string && data.soilRequirements.size() <= 600 &&
+             data.sunlight is string && data.sunlight.size() <= 300 &&
+             data.wateringFrequency is string && data.wateringFrequency.size() <= 300 &&
+             data.fertilizerGuidance is string && data.fertilizerGuidance.size() <= 600 &&
+             data.propagationMethod is string && data.propagationMethod.size() <= 400 &&
+             data.floweringOrFruitingSeason is string && data.floweringOrFruitingSeason.size() <= 300 &&
+             data.growthSize is string && data.growthSize.size() <= 200 &&
+             data.indoorOutdoorSuitability is string && data.indoorOutdoorSuitability.size() <= 300 &&
+             data.plainsHillSuitability is string && data.plainsHillSuitability.size() <= 300 &&
+             data.commonPestsDiseases is string && data.commonPestsDiseases.size() <= 500 &&
+             data.careInstructionsEn is string && data.careInstructionsEn.size() <= 2000 &&
+             data.careInstructionsBn is string && data.careInstructionsBn.size() <= 2000 &&
+             data.careInstructionsHi is string && data.careInstructionsHi.size() <= 2000 &&
+             data.verifiedNurseryIdsCsv is string && data.verifiedNurseryIdsCsv.size() <= 1000 &&
+             data.isRare is bool &&
+             data.isVerifiedEntry is bool &&
+             (!('publicationStatus' in data) || data.publicationStatus in ['PUBLISHED', 'DRAFT_REVIEW_REQUIRED']) &&
+             data.sourceReference is string && data.sourceReference.size() >= 2 && data.sourceReference.size() <= 300 &&
+             data.lastVerifiedDate is string && data.lastVerifiedDate.size() <= 40 &&
+             !('id' in data);
+    }
+
+    function isValidWbNurseryDirectoryEntry(data) {
+      return data.nurseryId is string && data.nurseryId.size() >= 1 && data.nurseryId.size() <= 128 &&
+             data.businessName is string && data.businessName.size() >= 1 && data.businessName.size() <= 200 &&
+             data.businessNameBn is string && data.businessNameBn.size() <= 200 &&
+             data.businessNameHi is string && data.businessNameHi.size() <= 200 &&
+             (!('ownerName' in data) || data.ownerName == null || (data.ownerName is string && data.ownerName.size() <= 150)) &&
+             (!('fullAddress' in data) || data.fullAddress == null || (data.fullAddress is string && data.fullAddress.size() <= 500)) &&
+             data.districtCode is string && data.districtCode.size() >= 2 && data.districtCode.size() <= 60 &&
+             (!('locality' in data) || data.locality == null || (data.locality is string && data.locality.size() <= 150)) &&
+             data.state is string && data.state.size() >= 2 && data.state.size() <= 80 &&
+             (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 40)) &&
+             (!('whatsapp' in data) || data.whatsapp == null || (data.whatsapp is string && data.whatsapp.size() <= 40)) &&
+             (!('latitude' in data) || data.latitude == null || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90)) &&
+             (!('longitude' in data) || data.longitude == null || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180)) &&
+             (!('websiteOrSocial' in data) || data.websiteOrSocial == null || (data.websiteOrSocial is string && data.websiteOrSocial.size() <= 500)) &&
+             (!('openingHours' in data) || data.openingHours == null || (data.openingHours is string && data.openingHours.size() <= 200)) &&
+             data.availablePlantCategoriesCsv is string && data.availablePlantCategoriesCsv.size() <= 600 &&
+             data.availablePlantIdsCsv is string && data.availablePlantIdsCsv.size() <= 1500 &&
+             (!('supportsWholesale' in data) || data.supportsWholesale == null || data.supportsWholesale is bool) &&
+             (!('supportsRetail' in data) || data.supportsRetail == null || data.supportsRetail is bool) &&
+             (!('deliveryAvailable' in data) || data.deliveryAvailable == null || data.deliveryAvailable is bool) &&
+             data.verificationStatus in ['PENDING_VERIFICATION', 'VERIFIED_PARTNER', 'ADMIN_VERIFIED'] &&
+             (!('ownerConsentStatus' in data) || (data.ownerConsentStatus is string && data.ownerConsentStatus.size() <= 60)) &&
+             data.isVerified is bool &&
+             data.sourceReference is string && data.sourceReference.size() <= 300 &&
+             data.lastVerifiedDate is string && data.lastVerifiedDate.size() <= 40 &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 800)) &&
+             !('id' in data);
+    }
+
+    match /plant_kingdom/{plantId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(plantId) &&
+                               incoming().plantId == plantId &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidPlantKingdomEntry(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /wb_nurseries/{nurseryId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(nurseryId) &&
+                               incoming().nurseryId == nurseryId &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidWbNurseryDirectoryEntry(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // LANGUAGE-BASED PROMO BANNERS
+    // =========================================================================
+    function isValidBannerMediaUrl(url) {
+      return url is string && (
+        url == '' ||
+        isValidHttpsUrl(url) ||
+        (url.size() <= 1000 && url.matches('^content://[^\\s]+$'))
+      );
+    }
+
+    function isValidPromoBanner(data) {
+      return data.languageCode in ['bn', 'hi', 'en'] &&
+             data.orderIndex is int && data.orderIndex >= 0 && data.orderIndex <= 100 &&
+             data.isActive is bool &&
+             data.title is string && data.title.size() <= 160 &&
+             data.subtitle is string && data.subtitle.size() <= 240 &&
+             data.badgeText is string && data.badgeText.size() <= 60 &&
+             data.ctaLabel is string && data.ctaLabel.size() <= 40 &&
+             data.drawableResName is string && data.drawableResName.size() <= 120 &&
+             isValidBannerMediaUrl(data.imageUrl) &&
+             data.targetCardId is string && data.targetCardId.size() <= 60 &&
+             data.isPoster is bool &&
+             data.hideTextOverlay is bool &&
+             !('id' in data);
+    }
+
+    match /promo_banners/{bannerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(bannerId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidPromoBanner(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // AGRICULTURE MACHINERY, RENTALS, SERVICES & SILIGURI DEALER DIRECTORY
+    // =========================================================================
+    function isValidMachineryProduct(data) {
+      return isValidId(data.sellerUserId) &&
+             data.dealerId is string && data.dealerId.size() <= 128 &&
+             data.sellerBusinessName is string && data.sellerBusinessName.size() >= 1 && data.sellerBusinessName.size() <= 200 &&
+             data.sellerLocation is string && data.sellerLocation.size() <= 200 &&
+             data.sellerLocalityCode is string && data.sellerLocalityCode.size() <= 60 &&
+             (!('sellerPhone' in data) || data.sellerPhone == null || (data.sellerPhone is string && data.sellerPhone.size() <= 40)) &&
+             (!('sellerWhatsapp' in data) || data.sellerWhatsapp == null || (data.sellerWhatsapp is string && data.sellerWhatsapp.size() <= 40)) &&
+             data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 200 &&
+             data.nameBn is string && data.nameBn.size() <= 200 &&
+             data.nameHi is string && data.nameHi.size() <= 200 &&
+             data.categoryCode in [
+               'TRACTORS_LAND_PREP', 'SOIL_EARTH_MOVING', 'SEEDING_PLANTING',
+               'IRRIGATION_WATER', 'CROP_PROTECTION_SPRAYING', 'HARVESTING_MACHINERY',
+               'CROP_PROCESSING_STORAGE', 'GARDENING_TEA_HORTICULTURE',
+               'SMART_PRECISION_AG', 'SPARE_PARTS_WORKSHOP'
+             ] &&
+             data.subcategory is string && data.subcategory.size() <= 120 &&
+             data.brand is string && data.brand.size() <= 100 &&
+             data.modelNumber is string && data.modelNumber.size() <= 100 &&
+             data.condition in ['NEW', 'USED', 'REFURBISHED'] &&
+             data.forSale is bool &&
+             data.forRent is bool &&
+             (!('salePriceInr' in data) || data.salePriceInr == null || (data.salePriceInr is number && data.salePriceInr >= 0)) &&
+             data.listingOrigin in ['REFERENCE_SPEC', 'SELLER_LISTING'] &&
+             data.approvalStatus in ['APPROVED', 'PENDING_APPROVAL', 'REJECTED'] &&
+             data.requiresDgcaCompliance is bool &&
+             data.requiresEarthmovingSafety is bool &&
+             (!('photosCsv' in data) || (data.photosCsv is string && data.photosCsv.size() <= 2000)) &&
+             (!('firebaseStoragePathsCsv' in data) || (data.firebaseStoragePathsCsv is string && data.firebaseStoragePathsCsv.size() <= 2000)) &&
+             (!('brandVerified' in data) || data.brandVerified is bool) &&
+             (!('modelVerified' in data) || data.modelVerified is bool) &&
+             (!('pendingAdminReview' in data) || data.pendingAdminReview is bool) &&
+             (!('adminReviewNote' in data) || (data.adminReviewNote is string && data.adminReviewNote.size() <= 600)) &&
+              (!('hireServiceTypeCode' in data) || (data.hireServiceTypeCode is string && data.hireServiceTypeCode.size() <= 64)) &&
+              (!('aliasesCsv' in data) || (data.aliasesCsv is string && data.aliasesCsv.size() <= 1000)) &&
+              (!('applicableCategoriesCsv' in data) || (data.applicableCategoriesCsv is string && data.applicableCategoriesCsv.size() <= 400)) &&
+              (!('subsidySchemeCodesCsv' in data) || (data.subsidySchemeCodesCsv is string && data.subsidySchemeCodesCsv.size() <= 200)) &&
+              (!('sourceType' in data) || (data.sourceType is string && data.sourceType.size() <= 120)) &&
+              (!('compatibleWithIdsCsv' in data) || (data.compatibleWithIdsCsv is string && data.compatibleWithIdsCsv.size() <= 800)) &&
+              (!('operatorTrainingRequired' in data) || data.operatorTrainingRequired is bool) &&
+              !('id' in data);
+    }
+
+    function isValidMachineryDealer(data, dealerId) {
+      return isValidId(data.dealerId) && data.dealerId == dealerId &&
+             data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 200 &&
+             data.localityCode is string && data.localityCode.size() >= 2 && data.localityCode.size() <= 60 &&
+             data.district is string && data.district.size() <= 100 &&
+             data.state is string && data.state.size() <= 80 &&
+             (!('fullAddress' in data) || data.fullAddress == null || (data.fullAddress is string && data.fullAddress.size() <= 400)) &&
+             (!('pinCode' in data) || data.pinCode == null || (data.pinCode is string && data.pinCode.size() <= 20)) &&
+             (!('ownerName' in data) || data.ownerName == null || (data.ownerName is string && data.ownerName.size() <= 120)) &&
+             (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 40)) &&
+             (!('whatsapp' in data) || data.whatsapp == null || (data.whatsapp is string && data.whatsapp.size() <= 40)) &&
+             data.verificationStatus in ['PENDING_VERIFICATION', 'VERIFIED_PARTNER', 'ADMIN_VERIFIED'] &&
+             data.ownerConsentStatus in ['NOT_CONFIRMED', 'OWNER_SUBMITTED_AWAITING_ADMIN', 'CONFIRMED'] &&
+             data.isVerified is bool &&
+             data.isAuthorisedDealerVerified is bool &&
+             !('id' in data);
+    }
+
+    function isValidMachineryInquiry(data) {
+      return isValidId(data.userId) &&
+             data.farmerName is string && data.farmerName.size() >= 1 && data.farmerName.size() <= 120 &&
+             data.farmerPhone is string && data.farmerPhone.size() <= 30 &&
+             isValidId(data.machineId) &&
+             data.machineName is string && data.machineName.size() <= 200 &&
+             isValidId(data.sellerUserId) &&
+             data.inquiryType is string && data.inquiryType.size() <= 40 &&
+             data.message is string && data.message.size() <= 1000 &&
+             data.status in [
+               'REQUESTED_AWAITING_CONFIRMATION', 'PENDING_SYNC', 'ACCEPTED',
+               'CONFIRMED', 'RESPONDED', 'REPLIED', 'COMPLETED', 'CLOSED',
+               'CANCELLED', 'REJECTED'
+             ] &&
+             data.sellerReply is string && data.sellerReply.size() <= 1000 &&
+             !('id' in data);
+    }
+
+    function isValidMachineryRental(data) {
+      return isValidId(data.userId) &&
+             data.farmerName is string && data.farmerName.size() >= 1 && data.farmerName.size() <= 120 &&
+             data.farmerPhone is string && data.farmerPhone.size() <= 30 &&
+             isValidId(data.machineId) &&
+             data.machineName is string && data.machineName.size() <= 200 &&
+             isValidId(data.sellerUserId) &&
+             data.locality is string && data.locality.size() <= 120 &&
+             data.rentalUnit in ['HOURLY', 'DAILY', 'WEEKLY', 'PER_ACRE', 'CUSTOM'] &&
+             data.durationUnits is int && data.durationUnits >= 1 && data.durationUnits <= 365 &&
+             data.withOperator is bool &&
+             data.deliveryRequired is bool &&
+             data.notes is string && data.notes.size() <= 800 &&
+             data.status in [
+               'REQUESTED_AWAITING_CONFIRMATION', 'PENDING_SYNC', 'ACCEPTED',
+               'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED'
+             ] &&
+             !('id' in data);
+    }
+
+    function isValidMachineryServiceRequest(data) {
+      return isValidId(data.userId) &&
+             data.farmerName is string && data.farmerName.size() >= 1 && data.farmerName.size() <= 120 &&
+             data.farmerPhone is string && data.farmerPhone.size() <= 30 &&
+             data.serviceTypeCode is string && data.serviceTypeCode.size() >= 2 && data.serviceTypeCode.size() <= 60 &&
+             data.locality is string && data.locality.size() <= 120 &&
+             data.landSizeText is string && data.landSizeText.size() <= 80 &&
+             data.cropName is string && data.cropName.size() <= 100 &&
+             data.preferredDate is string && data.preferredDate.size() <= 40 &&
+             data.notes is string && data.notes.size() <= 800 &&
+             isValidId(data.providerUserId) &&
+             data.status in [
+               'REQUESTED_AWAITING_CONFIRMATION', 'PENDING_SYNC', 'ACCEPTED',
+               'CONFIRMED', 'ASSIGNED', 'COMPLETED', 'CANCELLED', 'REJECTED'
+             ] &&
+             !('id' in data);
+    }
+
+    function isValidMachineryManufacturer(data) {
+      return data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 150 &&
+             data.nameBn is string && data.nameBn.size() <= 150 &&
+             data.nameHi is string && data.nameHi.size() <= 150 &&
+             data.countryOrOrigin is string && data.countryOrOrigin.size() <= 60 &&
+             data.focusSummaryEn is string && data.focusSummaryEn.size() <= 400 &&
+             (data.officialPortalUrl == '' || isValidHttpsUrl(data.officialPortalUrl)) &&
+             (data.dealerLocatorUrl == '' || isValidHttpsUrl(data.dealerLocatorUrl)) &&
+             (data.servicePortalUrl == '' || isValidHttpsUrl(data.servicePortalUrl)) &&
+             data.customerCareHelpline is string && data.customerCareHelpline.size() <= 120 &&
+             data.supportedCategoriesCsv is string && data.supportedCategoriesCsv.size() <= 300 &&
+             data.isVerifiedOfficialLink is bool &&
+             data.verificationStatus is string && data.verificationStatus.size() <= 80 &&
+             !('id' in data);
+    }
+
+    function isValidMachineryDealerOffer(data) {
+      return data.machineId is string && data.machineId.size() >= 1 && data.machineId.size() <= 128 &&
+             data.dealerId is string && data.dealerId.size() <= 128 &&
+             data.dealerName is string && data.dealerName.size() >= 1 && data.dealerName.size() <= 200 &&
+             data.localityCode is string && data.localityCode.size() <= 60 &&
+             data.modelNumber is string && data.modelNumber.size() <= 120 &&
+             data.condition in ['NEW', 'USED', 'REFURBISHED'] &&
+             data.offersSale is bool &&
+             data.offersRent is bool &&
+             (!('mrpInr' in data) || data.mrpInr == null || (data.mrpInr is number && data.mrpInr >= 0)) &&
+             (!('dealerPriceInr' in data) || data.dealerPriceInr == null || (data.dealerPriceInr is number && data.dealerPriceInr >= 0)) &&
+             (!('indicativePriceInr' in data) || data.indicativePriceInr == null || (data.indicativePriceInr is number && data.indicativePriceInr >= 0)) &&
+             (!('rentalHourlyInr' in data) || data.rentalHourlyInr == null || (data.rentalHourlyInr is number && data.rentalHourlyInr >= 0)) &&
+             (!('rentalDailyInr' in data) || data.rentalDailyInr == null || (data.rentalDailyInr is number && data.rentalDailyInr >= 0)) &&
+             (!('rentalPerAcreInr' in data) || data.rentalPerAcreInr == null || (data.rentalPerAcreInr is number && data.rentalPerAcreInr >= 0)) &&
+             data.stockStatus is string && data.stockStatus.size() <= 120 &&
+             data.verificationStatus is string && data.verificationStatus.size() <= 100 &&
+             data.isOutdatedPrice is bool &&
+             !('id' in data);
+    }
+
+    function isValidMachineryReview(data) {
+      return isValidId(data.machineId) &&
+             isValidId(data.userId) &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100 &&
+             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+             data.title is string && data.title.size() <= 120 &&
+             data.comment is string && data.comment.size() >= 5 && data.comment.size() <= 1000 &&
+             data.verifiedFarmerFlag is bool &&
+             !('id' in data);
+    }
+
+    function isValidMachineryResearchQueueItem(data) {
+      return data.machineId is string && data.machineId.size() <= 128 &&
+             data.equipmentName is string && data.equipmentName.size() >= 2 && data.equipmentName.size() <= 200 &&
+             data.categoryCode is string && data.categoryCode.size() <= 80 &&
+             data.missingFieldsNote is string && data.missingFieldsNote.size() <= 800 &&
+             data.status in ['PENDING_RESEARCH', 'APPROVED', 'REJECTED'] &&
+             data.submittedBy is string && data.submittedBy.size() <= 150 &&
+             !('id' in data);
+    }
+
+    match /machinery_products/{productId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.approvalStatus == 'APPROVED' ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(productId) &&
+                       incoming().sellerUserId == request.auth.uid &&
+                       (incoming().approvalStatus == 'PENDING_APPROVAL' || isAdmin()) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryProduct(incoming());
+      allow update: if isSignedIn() &&
+                       incoming().sellerUserId == existing().sellerUserId &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryProduct(incoming()) && (
+                         isAdmin() ||
+                         (resource.data.sellerUserId == request.auth.uid && incoming().approvalStatus == 'PENDING_APPROVAL')
+                       );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.sellerUserId == request.auth.uid);
+    }
+
+    match /machinery_dealers/{dealerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(dealerId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidMachineryDealer(incoming(), dealerId);
+      allow delete: if isAdmin();
+    }
+
+    match /machinery_manufacturers/{oemId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(oemId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidMachineryManufacturer(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /machinery_dealer_offers/{offerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(offerId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidMachineryDealerOffer(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /machinery_reviews/{reviewId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       isValidId(reviewId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       isValidMachineryReview(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidMachineryReview(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /machinery_research_queue/{itemId} {
+      allow get, list: if isSignedIn();
+      allow create: if (isAdmin() || (
+                         isSignedIn() &&
+                         incoming().submittedBy == request.auth.uid &&
+                         incoming().status == 'PENDING_RESEARCH'
+                       )) &&
+                       isValidId(itemId) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryResearchQueueItem(incoming());
+      allow update, delete: if isAdmin() &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidMachineryResearchQueueItem(incoming());
+    }
+
+    match /machinery_favourites/{favId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() &&
+                               isValidId(favId) &&
+                               incoming().userId == request.auth.uid &&
+                               isValidId(incoming().machineId) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               !('id' in incoming());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /machinery_inquiries/{inquiryId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(inquiryId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'REQUESTED_AWAITING_CONFIRMATION' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryInquiry(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || resource.data.sellerUserId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryInquiry(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /machinery_rentals/{rentalId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.sellerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(rentalId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'REQUESTED_AWAITING_CONFIRMATION' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryRental(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || resource.data.sellerUserId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryRental(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /machinery_service_requests/{serviceId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.providerUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(serviceId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'REQUESTED_AWAITING_CONFIRMATION' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryServiceRequest(incoming());
+      allow update: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || resource.data.providerUserId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidMachineryServiceRequest(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /machinery_verification/{claimId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(claimId) &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(incoming().dealerId) &&
+                       incoming().claimNote is string && incoming().claimNote.size() >= 2 && incoming().claimNote.size() <= 800 &&
+                       incoming().status == 'PENDING_VERIFICATION' &&
+                       incoming().ownerConsentConfirmed == true &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       !('id' in incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /machinery_admin_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+                       isValidId(logId) &&
+                       incoming().adminEmail is string && incoming().adminEmail.size() <= 150 &&
+                       incoming().action is string && incoming().action.size() <= 80 &&
+                       incoming().targetId is string && incoming().targetId.size() <= 120 &&
+                       incoming().summary is string && incoming().summary.size() <= 500 &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       !('id' in incoming());
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Trust, Safety, Anti-Fraud, Suspensions, Grievances & Audit Logs
+    // -------------------------------------------------------------------------
+    function isValidFraudReport(data) {
+      return data.targetType in ['SELLER', 'MACHINERY', 'NURSERY_PRODUCT', 'EXPERT', 'ORDER'] &&
+             data.targetId is string && data.targetId.size() > 0 && data.targetId.size() <= 120 &&
+             data.targetName is string && data.targetName.size() <= 160 &&
+             data.sellerUserId is string && data.sellerUserId.size() <= 128 &&
+             data.reasonCode in ['ADVANCE_PAYMENT_SCAM', 'FAKE_LISTING', 'WRONG_PRICE', 'IMPERSONATION', 'HARASSMENT_OR_ABUSE', 'OTHER'] &&
+             data.description is string && data.description.size() >= 8 && data.description.size() <= 1200 &&
+             data.reporterUserId is string && data.reporterUserId.size() > 0 && data.reporterUserId.size() <= 128 &&
+             data.reporterName is string && data.reporterName.size() > 0 && data.reporterName.size() <= 120 &&
+             data.status in ['OPEN', 'UNDER_REVIEW', 'ACTION_TAKEN', 'DISMISSED'] &&
+             data.adminNote is string && data.adminNote.size() <= 600 &&
+             data.resolutionAction is string && data.resolutionAction.size() <= 60 &&
+             !('id' in data);
+    }
+
+    match /fraud_reports/{reportId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.reporterUserId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().reporterUserId == request.auth.uid &&
+                       incoming().status == 'OPEN' &&
+                       incoming().resolutionAction == 'NONE' &&
+                       incoming().adminNote == '' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidFraudReport(incoming());
+      allow update: if isAdmin() &&
+                       incoming().reporterUserId == existing().reporterUserId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidFraudReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidGrievanceTicket(data) {
+      return data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() <= 120 &&
+             data.category in ['MARKETPLACE', 'EXPERT', 'MACHINERY', 'PAYMENT_FRAUD', 'PRIVACY_DATA', 'APP_SUPPORT'] &&
+             data.subject is string && data.subject.size() >= 4 && data.subject.size() <= 160 &&
+             data.description is string && data.description.size() >= 8 && data.description.size() <= 1500 &&
+             (!('relatedEntityId' in data) || (data.relatedEntityId is string && data.relatedEntityId.size() <= 120)) &&
+             data.status in ['SUBMITTED', 'IN_REVIEW', 'RESOLVED'] &&
+             data.adminResponse is string && data.adminResponse.size() <= 1200 &&
+             !('id' in data);
+    }
+
+    match /grievance_tickets/{ticketId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(ticketId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'SUBMITTED' &&
+                       incoming().adminResponse == '' &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidGrievanceTicket(incoming());
+      allow update: if isAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidGrievanceTicket(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /seller_suspensions/{sellerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               isValidId(sellerId) &&
+                               incoming().sellerUserId == sellerId &&
+                               incoming().businessName is string && incoming().businessName.size() <= 160 &&
+                               incoming().isSuspended is bool &&
+                               incoming().reason is string && incoming().reason.size() <= 400 &&
+                               incoming().suspendedByAdmin is string && incoming().suspendedByAdmin.size() <= 150 &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               !('id' in incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /trust_audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+                       isValidId(logId) &&
+                       incoming().adminEmail is string && incoming().adminEmail.size() <= 150 &&
+                       incoming().action is string && incoming().action.size() <= 80 &&
+                       incoming().targetType is string && incoming().targetType.size() <= 50 &&
+                       incoming().targetId is string && incoming().targetId.size() <= 120 &&
+                       incoming().summary is string && incoming().summary.size() <= 500 &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       !('id' in incoming());
+      allow update, delete: if false;
+    }
+  }
+}
+
+

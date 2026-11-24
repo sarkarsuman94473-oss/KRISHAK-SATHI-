@@ -1,0 +1,10 @@
+KRISHAK SATHI - IMPORT INSTRUCTIONS
+
+1. These are plain-text CSV files saved with .txt extension for easier upload in Google AI Studio.
+2. Upload Nursery_Directory.txt and Plant_Catalog.txt in the AI Studio Build chat using the attachment button.
+3. Ask the AI Studio project to read the files and create a safe import process for the EXISTING Firebase database.
+4. Back up Firebase before importing. Use stable IDs and upsert/deduplication; do not overwrite unrelated existing data.
+5. Nursery records are unverified candidates. Do not publish them as verified businesses; do not invent addresses or phone numbers.
+6. Plant records are draft entries. Do not publish incomplete care advice as verified expert guidance.
+7. Keep the existing app, authentication, navigation, features and database structure intact. Modify the existing app only.
+8. Preview the import count and conflicts first; require admin confirmation before writing to Firebase.

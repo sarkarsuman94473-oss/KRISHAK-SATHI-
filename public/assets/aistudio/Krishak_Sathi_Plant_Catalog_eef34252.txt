@@ -1,0 +1,85 @@
+KRISHAK SATHI - PLANT CATALOG
+Format: CSV text. UTF-8 encoding.
+IMPORTANT: Starter catalog only. Keep publication_status=DRAFT_REVIEW_REQUIRED until care details, local suitability, sources and image rights are reviewed.
+
+plant_id,category,name_en,name_bn,name_hi,scientific_name,plant_type,climate_suitability_note,image_url,description_bn,care_instructions_bn,sunlight,watering,soil,flowering_or_fruiting_season,source_reference,last_verified_date,publication_status
+KS-PL-0001,flower,Rose,গোলাপ,गुलाब,Rosa spp.,Flowering plant,Outdoor; full sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0002,flower,Marigold,গাঁদা,गेंदा,Tagetes spp.,Flowering plant,Outdoor; full sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0003,flower,Hibiscus,জবা,गुड़हल,Hibiscus rosa-sinensis,Flowering plant,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0004,flower,Tuberose,রজনীগন্ধা,रजनीगंधा,Agave amica,Flowering plant,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0005,flower,Arabian Jasmine,বেলি,बेला,Jasminum sambac,Flowering plant,Outdoor; sun/partial shade,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0006,flower,Jasmine,জুঁই,चमेली,Jasminum spp.,Flowering plant,Outdoor; sun/partial shade,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0007,flower,Gardenia,গন্ধরাজ,गंधराज,Gardenia jasminoides,Flowering plant,Outdoor; partial sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0008,flower,Crape Jasmine,টগর,चांदनी,Tabernaemontana divaricata,Flowering plant,Outdoor; sun/partial shade,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0009,flower,Butterfly Pea,অপরাজিতা,अपराजिता,Clitoria ternatea,Flowering climber,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0010,flower,Periwinkle,নয়নতারা,सदाबहार,Catharanthus roseus,Flowering plant,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0011,flower,Night-flowering Jasmine,শিউলি,हरसिंगार,Nyctanthes arbor-tristis,Flowering tree/shrub,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0012,flower,Champak,চাঁপা,चंपा,Magnolia champaca,Flowering tree,Outdoor; tropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0013,flower,Orange Jasmine,কামিনী,कामिनी,Murraya paniculata,Flowering shrub,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0014,flower,Bougainvillea,বাগানবিলাস,बोगनवेलिया,Bougainvillea spp.,Flowering climber,Outdoor; full sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0015,flower,Dahlia,ডালিয়া,डहेलिया,Dahlia pinnata,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0016,flower,Chrysanthemum,চন্দ্রমল্লিকা,गुलदाउदी,Chrysanthemum × morifolium,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0017,flower,Petunia,পিটুনিয়া,पेटूनिया,Petunia × atkinsiana,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0018,flower,Pansy,প্যানসি,पैंसी,Viola × wittrockiana,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0019,flower,Calendula,ক্যালেন্ডুলা,कैलेंडुला,Calendula officinalis,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0020,flower,Gladiolus,গ্লাডিওলাস,ग्लैडियोलस,Gladiolus spp.,Bulb flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0021,flower,Zinnia,জিনিয়া,ज़िनिया,Zinnia elegans,Seasonal flower,Warm season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0022,flower,Cosmos,কসমস,कॉसमॉस,Cosmos bipinnatus,Seasonal flower,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0023,flower,Salvia,স্যালভিয়া,साल्विया,Salvia splendens,Seasonal flower,Outdoor; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0024,flower,Dianthus,ডায়ান্থাস,डायन्थस,Dianthus spp.,Seasonal flower,Cool season; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0025,flower,Gerbera,জারবেরা,जरबेरा,Gerbera jamesonii,Flowering plant,Bright light; well-drained soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0026,flower,Lily,লিলি,लिली,Lilium spp.,Bulb flower,Bright light; well-drained soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0027,hill_flower,Rhododendron,রডোডেনড্রন,बुरांश,Rhododendron spp.,Himalayan flowering shrub/tree,Cool hills; species-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0028,hill_flower,Magnolia,ম্যাগনোলিয়া,मैग्नोलिया,Magnolia spp.,Himalayan flowering tree,Cool/subtropical hills; species-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0029,hill_flower,Himalayan Blue Poppy,হিমালয়ান ব্লু পপি,हिमालयी नीला पॉपी,Meconopsis spp.,Himalayan flower,Cool high-altitude conditions,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0030,hill_flower,Primula,প্রিমুলা,प्रिमुला,Primula spp.,Himalayan flower,Cool climate; moist soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0031,hill_flower,Cymbidium Orchid,সিম্বিডিয়াম অর্কিড,सिम्बिडियम ऑर्किड,Cymbidium spp.,Orchid,Cool bright conditions,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0032,hill_flower,Dendrobium Orchid,ডেনড্রোবিয়াম অর্কিড,डेंड्रोबियम ऑर्किड,Dendrobium spp.,Orchid,Bright filtered light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0033,hill_flower,Coelogyne Orchid,কোয়েলোজাইন অর্কিড,कोएलोजाइन ऑर्किड,Coelogyne spp.,Orchid,Species-specific; often cool/moist,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0034,hill_flower,Pleione Orchid,প্লিওনে অর্কিড,प्लियोने ऑर्किड,Pleione spp.,Orchid,Cool seasonal conditions,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0035,hill_flower,Paphiopedilum Orchid,প্যাপিওপেডিলাম,पैफियोपेडिलम,Paphiopedilum spp.,Orchid,Shade; humid conditions,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0036,indoor,Money Plant / Golden Pothos,মানি প্ল্যান্ট,मनी प्लांट,Epipremnum aureum,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0037,indoor,Marble Queen Pothos,মার্বেল কুইন পোথোস,मार्बल क्वीन पोथोस,Epipremnum aureum 'Marble Queen',Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0038,indoor,Neon Pothos,নিয়ন পোথোস,नियॉन पोथोस,Epipremnum aureum 'Neon',Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0039,indoor,Snake Plant,স্নেক প্ল্যান্ট,स्नेक प्लांट,Dracaena trifasciata,Indoor foliage plant,Low to bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0040,indoor,ZZ Plant,জেডজেড প্ল্যান্ট,ज़ेडज़ेड प्लांट,Zamioculcas zamiifolia,Indoor foliage plant,Low to bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0041,indoor,Monstera,মনস্টেরা,मॉन्स्टेरा,Monstera deliciosa,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0042,indoor,Philodendron,ফিলোডেনড্রন,फिलोडेंड्रॉन,Philodendron spp.,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0043,indoor,Syngonium,সিঙ্গোনিয়াম,सिंगोनियम,Syngonium podophyllum,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0044,indoor,Aglaonema,অ্যাগলোনিমা,एग्लोनेमा,Aglaonema commutatum hybrids,Indoor foliage plant,Low/bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0045,indoor,Peace Lily,পিস লিলি,पीस लिली,Spathiphyllum spp.,Indoor flowering foliage,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0046,indoor,Spider Plant,স্পাইডার প্ল্যান্ট,स्पाइडर प्लांट,Chlorophytum comosum,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0047,indoor,Rubber Plant,রাবার প্ল্যান্ট,रबर प्लांट,Ficus elastica,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0048,indoor,Dracaena,ড্রাসিনা,ड्रासेना,Dracaena spp.,Indoor foliage plant,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0049,indoor,Areca Palm,এরিকা পাম,एरिका पाम,Dypsis lutescens,Indoor/outdoor palm,Bright indirect light,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0050,indoor,Boston Fern,বোস্টন ফার্ন,बोस्टन फ़र्न,Nephrolepis exaltata,Fern,Indirect light; humidity,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0051,fruit,Mango,আম,आम,Mangifera indica,Fruit tree,Warm tropical/subtropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0052,fruit,Litchi,লিচু,लीची,Litchi chinensis,Fruit tree,Subtropical; humid,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0053,fruit,Guava,পেয়ারা,अमरूद,Psidium guajava,Fruit tree,Tropical/subtropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0054,fruit,Lemon,লেবু,नींबू,Citrus limon,Fruit tree,Sunny; well-drained soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0055,fruit,Orange,কমলা,संतरा,Citrus × sinensis,Fruit tree,Subtropical; cultivar-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0056,fruit,Indian Gooseberry,আমলকি,आंवला,Phyllanthus emblica,Fruit tree,Tropical/subtropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0057,fruit,Jackfruit,কাঁঠাল,कटहल,Artocarpus heterophyllus,Fruit tree,Humid tropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0058,fruit,Banana,কলা,केला,Musa spp.,Fruit plant,Warm humid; water available,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0059,fruit,Papaya,পেঁপে,पपीता,Carica papaya,Fruit plant,Warm; frost-sensitive,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0060,fruit,Pomegranate,ডালিম,अनार,Punica granatum,Fruit shrub/tree,Warm; well-drained soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0061,fruit,Avocado,অ্যাভোকাডো,एवोकाडो,Persea americana,Fruit tree,Climate and cultivar-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0062,fruit,Dragon Fruit,ড্রাগন ফল,ड्रैगन फ्रूट,Selenicereus undatus,Climbing cactus fruit,Warm; support structure,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0063,hill_fruit,Apple,আপেল,सेब,Malus domestica,Temperate fruit tree,Suitable hill chill requirement,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0064,hill_fruit,Pear,নাশপাতি,नाशपाती,Pyrus communis,Temperate fruit tree,Cultivar-specific chill requirement,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0065,hill_fruit,Peach,পিচ,आड़ू,Prunus persica,Temperate fruit tree,Cultivar-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0066,hill_fruit,Plum,প্লাম,आलूबुखारा,Prunus domestica,Temperate fruit tree,Cultivar-specific,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0067,hill_fruit,Kiwi,কিউই,कीवी,Actinidia deliciosa,Climbing fruit vine,Cool subtropical/hill conditions,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0068,tree,Gulmohar,কৃষ্ণচূড়া,गुलमोहर,Delonix regia,Ornamental tree,Warm tropical; full sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0069,tree,Copperpod,রাধাচূড়া,राधाचूड़ा,Peltophorum pterocarpum,Ornamental tree,Tropical; full sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0070,tree,Queen's Crape Myrtle,জারুল,जरुल,Lagerstroemia speciosa,Ornamental tree,Tropical/subtropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0071,tree,Kadam,কদম,कदम,Neolamarckia cadamba,Ornamental tree,Warm humid,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0072,tree,Spanish Cherry,বকুল,मौलश्री,Mimusops elengi,Ornamental tree,Tropical,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0073,medicinal,Holy Basil,তুলসী,तुलसी,Ocimum tenuiflorum,Herb/medicinal plant,Sunny; well-drained soil,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0074,medicinal,Aloe Vera,অ্যালোভেরা,घृतकुमारी,Aloe vera,Succulent/medicinal plant,Bright sun; low water,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0075,medicinal,Neem,নিম,नीम,Azadirachta indica,Medicinal tree,Tropical; drought tolerant,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0076,medicinal,Mint,পুদিনা,पुदीना,Mentha spp.,Aromatic herb,Moist soil; partial sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0077,medicinal,Lemongrass,লেমনগ্রাস,नींबू घास,Cymbopogon citratus,Aromatic grass,Warm; sun,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0078,succulent,Jade Plant,জেড প্ল্যান্ট,जेड प्लांट,Crassula ovata,Succulent,Bright light; low water,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0079,succulent,Echeveria,ইকেভেরিয়া,एचेवेरिया,Echeveria spp.,Succulent,Bright light; well-drained mix,,,,,,,,,,DRAFT_REVIEW_REQUIRED
+KS-PL-0080,succulent,Cactus,ক্যাকটাস,कैक्टस,Cactaceae spp.,Succulent,Bright light; very well-drained mix,,,,,,,,,,DRAFT_REVIEW_REQUIRED

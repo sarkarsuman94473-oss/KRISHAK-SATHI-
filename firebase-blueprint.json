@@ -1,0 +1,1026 @@
+{
+  "entities": {
+    "FarmerProfile": {
+      "title": "FarmerProfile",
+      "description": "Registered farmer profile and location details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "village": { "type": "string" },
+        "district": { "type": "string" },
+        "state": { "type": "string" },
+        "pinCode": { "type": "string" },
+        "farmSize": { "type": "number" },
+        "farmSizeUnit": { "type": "string" },
+        "mainCrops": { "type": "string" },
+        "preferredLanguage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "preferredLanguage"]
+    },
+    "FarmerCrop": {
+      "title": "FarmerCrop",
+      "description": "Farmer crop field and planting timeline",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "cropName": { "type": "string" },
+        "cropCategory": { "type": "string" },
+        "plantingDate": { "type": "string" },
+        "landArea": { "type": "number" },
+        "landUnit": { "type": "string" },
+        "variety": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "cropName", "plantingDate", "landArea", "landUnit"]
+    },
+    "TeaGarden": {
+      "title": "TeaGarden",
+      "description": "Tea garden profile and management details",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "gardenName": { "type": "string" },
+        "location": { "type": "string" },
+        "totalLand": { "type": "number" },
+        "landUnit": { "type": "string" },
+        "teaVariety": { "type": "string" },
+        "plantAgeYears": { "type": "number" },
+        "plantingYear": { "type": "number" },
+        "sectionsCount": { "type": "number" },
+        "irrigationAvailable": { "type": "boolean" },
+        "shadeTreesInfo": { "type": "string" },
+        "lastPruningDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "gardenName", "totalLand", "landUnit"]
+    },
+    "ProduceListing": {
+      "title": "ProduceListing",
+      "description": "Marketplace listing of harvest produce for sale",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "farmerPhone": { "type": "string" },
+        "product": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "expectedPricePerUnit": { "type": "number" },
+        "harvestDate": { "type": "string" },
+        "location": { "type": "string" },
+        "deliveryAvailable": { "type": "boolean" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "farmerName", "product", "quantity", "unit", "expectedPricePerUnit", "location", "status"]
+    },
+    "BuyerOffer": {
+      "title": "BuyerOffer",
+      "description": "Offer or negotiation on a produce listing",
+      "type": "object",
+      "properties": {
+        "listingId": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "buyerType": { "type": "string" },
+        "buyerPhone": { "type": "string" },
+        "offeredPricePerUnit": { "type": "number" },
+        "counterPricePerUnit": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["listingId", "farmerId", "buyerId", "offeredPricePerUnit", "status"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Confirmed produce sales order and delivery status",
+      "type": "object",
+      "properties": {
+        "listingId": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "product": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "agreedPricePerUnit": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "pickupPhotoUrl": { "type": "string" },
+        "weightConfirmedKg": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["listingId", "farmerId", "buyerId", "product", "quantity", "agreedPricePerUnit", "totalAmount", "status"]
+    },
+    "FarmerExpense": {
+      "title": "FarmerExpense",
+      "description": "Farming input expense item for profit calculation",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "cropId": { "type": "string" },
+        "cropName": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "dateMillis": { "type": "number" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "category", "amount", "dateMillis"]
+    },
+    "ExpertInquiry": {
+      "title": "ExpertInquiry",
+      "description": "Question submitted to agricultural experts",
+      "type": "object",
+      "properties": {
+        "farmerId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "crop": { "type": "string" },
+        "question": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "status": { "type": "string" },
+        "reply": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["farmerId", "farmerName", "question", "status"]
+    },
+    "ForumPost": {
+      "title": "ForumPost",
+      "description": "Farmer community discussion post categorized by topic and crop",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "topic": { "type": "string" },
+        "cropId": { "type": "string" },
+        "cropName": { "type": "string" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "reportCount": { "type": "number" },
+        "moderationStatus": { "type": "string" },
+        "pinned": { "type": "boolean" },
+        "moderationReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "authorRole", "title", "content", "topic", "cropId", "cropName", "likesCount", "commentsCount", "reportCount", "moderationStatus", "pinned"]
+    },
+    "ForumPostLike": {
+      "title": "ForumPostLike",
+      "description": "Per-user upvote/like marker on a forum post",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId"]
+    },
+    "ForumComment": {
+      "title": "ForumComment",
+      "description": "Reply/comment on a farmer community forum post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "content": { "type": "string" },
+        "moderationStatus": { "type": "string" },
+        "reportCount": { "type": "number" },
+        "moderationReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "authorName", "authorRole", "content", "moderationStatus", "reportCount"]
+    },
+    "ForumReport": {
+      "title": "ForumReport",
+      "description": "User flag/report for moderation review",
+      "type": "object",
+      "properties": {
+        "targetType": { "type": "string" },
+        "postId": { "type": "string" },
+        "commentId": { "type": "string" },
+        "targetAuthorId": { "type": "string" },
+        "targetAuthorName": { "type": "string" },
+        "targetPreview": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reason": { "type": "string" },
+        "details": { "type": "string" },
+        "status": { "type": "string" },
+        "adminActionNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetType", "postId", "targetAuthorId", "targetAuthorName", "reporterId", "reporterName", "reason", "status"]
+    },
+    "ForumUserModeration": {
+      "title": "ForumUserModeration",
+      "description": "Admin moderation status and warning strikes for a forum user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string" },
+        "warningCount": { "type": "number" },
+        "moderationReason": { "type": "string" },
+        "mutedUntilMillis": { "type": "number" },
+        "updatedByAdmin": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "status", "warningCount", "mutedUntilMillis"]
+    },
+    "GovernmentScheme": {
+      "title": "GovernmentScheme",
+      "description": "Central, West Bengal, or State farmer welfare scheme with verified official portal links and multilingual details",
+      "type": "object",
+      "properties": {
+        "govLevel": { "type": "string" },
+        "category": { "type": "string" },
+        "extraCategories": { "type": "array", "items": { "type": "string" } },
+        "farmerTypes": { "type": "array", "items": { "type": "string" } },
+        "activityFocus": { "type": "string" },
+        "northBengalPriority": { "type": "number" },
+        "discontinued": { "type": "boolean" },
+        "applicationStatus": { "type": "string" },
+        "officialUrl": { "type": "string" },
+        "officialSourceUrl": { "type": "string" },
+        "lastVerifiedDate": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "nameHi": { "type": "string" },
+        "departmentEn": { "type": "string" },
+        "departmentBn": { "type": "string" },
+        "departmentHi": { "type": "string" },
+        "shortDescEn": { "type": "string" },
+        "shortDescBn": { "type": "string" },
+        "shortDescHi": { "type": "string" },
+        "objectivesEn": { "type": "string" },
+        "objectivesBn": { "type": "string" },
+        "objectivesHi": { "type": "string" },
+        "whoCanApplyEn": { "type": "string" },
+        "whoCanApplyBn": { "type": "string" },
+        "whoCanApplyHi": { "type": "string" },
+        "eligibilityEn": { "type": "string" },
+        "eligibilityBn": { "type": "string" },
+        "eligibilityHi": { "type": "string" },
+        "documentsEn": { "type": "string" },
+        "documentsBn": { "type": "string" },
+        "documentsHi": { "type": "string" },
+        "benefitsEn": { "type": "string" },
+        "benefitsBn": { "type": "string" },
+        "benefitsHi": { "type": "string" },
+        "procedureEn": { "type": "string" },
+        "procedureBn": { "type": "string" },
+        "procedureHi": { "type": "string" },
+        "statusNoteEn": { "type": "string" },
+        "statusNoteBn": { "type": "string" },
+        "statusNoteHi": { "type": "string" },
+        "cropTagsEn": { "type": "string" },
+        "cropTagsBn": { "type": "string" },
+        "cropTagsHi": { "type": "string" },
+        "updatedByAdmin": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "govLevel",
+        "category",
+        "activityFocus",
+        "northBengalPriority",
+        "discontinued",
+        "applicationStatus",
+        "officialUrl",
+        "officialSourceUrl",
+        "lastVerifiedDate",
+        "nameEn",
+        "nameBn",
+        "nameHi",
+        "departmentEn",
+        "departmentBn",
+        "departmentHi"
+      ]
+    },
+    "AiAdminConfig": {
+      "title": "AiAdminConfig",
+      "description": "Admin-managed AI provider routing, failover, model names, HTTPS proxy endpoint, and rate limits (no API keys stored)",
+      "type": "object",
+      "properties": {
+        "primaryProvider": { "type": "string" },
+        "backupProviderEnabled": { "type": "boolean" },
+        "geminiModelName": { "type": "string" },
+        "openAiModelName": { "type": "string" },
+        "openAiProxyUrl": { "type": "string" },
+        "timeoutMs": { "type": "number" },
+        "maxRetriesPerProvider": { "type": "number" },
+        "rateLimitPerMinute": { "type": "number" },
+        "dailyQuotaPerUser": { "type": "number" },
+        "enableRagCitations": { "type": "boolean" },
+        "enableWeatherContext": { "type": "boolean" },
+        "updatedByAdmin": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["primaryProvider", "backupProviderEnabled", "geminiModelName", "openAiModelName", "openAiProxyUrl", "timeoutMs", "maxRetriesPerProvider", "rateLimitPerMinute", "dailyQuotaPerUser", "enableRagCitations", "enableWeatherContext"]
+    },
+    "AiKnowledgeDoc": {
+      "title": "AiKnowledgeDoc",
+      "description": "Verified agricultural research/extension document used for RAG citations",
+      "type": "object",
+      "properties": {
+        "titleEn": { "type": "string" },
+        "titleBn": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "institution": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "publicationDate": { "type": "string" },
+        "verifiedDate": { "type": "string" },
+        "category": { "type": "string" },
+        "applicableCropIdsCsv": { "type": "string" },
+        "regionTag": { "type": "string" },
+        "keywordsCsv": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "summaryBn": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["titleEn", "titleBn", "titleHi", "institution", "sourceUrl", "category", "summaryEn", "isActive"]
+    },
+    "AiTelemetryLog": {
+      "title": "AiTelemetryLog",
+      "description": "Privacy-safe operational telemetry and failover log (no prompt text stored)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "assistantMode": { "type": "string" },
+        "cropId": { "type": "string" },
+        "providerUsed": { "type": "string" },
+        "modelUsed": { "type": "string" },
+        "fallbackUsed": { "type": "boolean" },
+        "success": { "type": "boolean" },
+        "errorCode": { "type": "string" },
+        "errorSummary": { "type": "string" },
+        "latencyMs": { "type": "number" },
+        "estimatedTokens": { "type": "number" },
+        "estimatedCostUsd": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "assistantMode", "cropId", "providerUsed", "modelUsed", "fallbackUsed", "success", "errorCode", "errorSummary", "latencyMs", "estimatedTokens", "estimatedCostUsd"]
+    },
+    "AiFeedback": {
+      "title": "AiFeedback",
+      "description": "Farmer helpfulness feedback for AI answers",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "assistantMode": { "type": "string" },
+        "cropId": { "type": "string" },
+        "providerUsed": { "type": "string" },
+        "helpful": { "type": "boolean" },
+        "messagePreview": { "type": "string" },
+        "farmerNote": { "type": "string" },
+        "reviewStatus": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "assistantMode", "cropId", "providerUsed", "helpful", "messagePreview", "farmerNote", "reviewStatus"]
+    },
+    "SeoArticle": {
+      "title": "SeoArticle",
+      "description": "Multilingual public agriculture Knowledge Hub and Crop SEO articles",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string" },
+        "category": { "type": "string" },
+        "cropId": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "AI_DRAFT_PENDING_REVIEW", "PUBLISHED", "ARCHIVED"] },
+        "titleEn": { "type": "string" },
+        "titleBn": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "summaryBn": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "sourceName": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "canonicalUrl": { "type": "string" },
+        "lastUpdatedDate": { "type": "string" },
+        "isAiAssisted": { "type": "boolean" },
+        "reviewedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "category", "cropId", "status", "titleEn", "titleBn", "titleHi", "summaryEn", "summaryBn", "summaryHi", "sourceName", "sourceUrl", "canonicalUrl", "lastUpdatedDate", "isAiAssisted", "reviewedBy"]
+    },
+    "SeoConfig": {
+      "title": "SeoConfig",
+      "description": "Admin crawler controls and Search Console verification configuration",
+      "type": "object",
+      "properties": {
+        "baseWebUrl": { "type": "string" },
+        "googleSearchConsoleToken": { "type": "string" },
+        "allowGooglebot": { "type": "boolean" },
+        "allowOaiSearchBot": { "type": "boolean" },
+        "allowGptBot": { "type": "boolean" },
+        "playStoreStatus": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["baseWebUrl", "googleSearchConsoleToken", "allowGooglebot", "allowOaiSearchBot", "allowGptBot", "playStoreStatus", "updatedBy"]
+    },
+    "SeoAnalyticsEvent": {
+      "title": "SeoAnalyticsEvent",
+      "description": "Privacy-safe non-PII search referral bucket log",
+      "type": "object",
+      "properties": {
+        "sourceBucket": { "type": "string" },
+        "targetSlug": { "type": "string" },
+        "languageCode": { "type": "string", "enum": ["en", "bn", "hi"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sourceBucket", "targetSlug", "languageCode"]
+    },
+    "PlantKingdomEntry": {
+      "title": "PlantKingdomEntry",
+      "description": "Multilingual botanical species guide with soil, climate, watering, propagation, pests, and verified nursery links",
+      "type": "object",
+      "properties": {
+        "plantId": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "nameHi": { "type": "string" },
+        "scientificName": { "type": "string" },
+        "primaryGroup": { "type": "string", "enum": ["HIMALAYAN_HILL_FLOWERS", "COMMON_FLOWERS", "SEASONAL_FLOWERS", "MONEY_INDOOR_PLANTS", "FRUIT_PLANTS", "ORNAMENTAL_TREES_CLIMBERS", "MEDICINAL_HERBS_SUCCULENTS"] },
+        "secondaryGroupsCsv": { "type": "string" },
+        "filterTagsCsv": { "type": "string" },
+        "seasonalTagsCsv": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "descriptionBn": { "type": "string" },
+        "descriptionHi": { "type": "string" },
+        "visualAssetKey": { "type": "string" },
+        "customPhotoUri": { "type": "string" },
+        "climate": { "type": "string" },
+        "temperatureRange": { "type": "string" },
+        "soilRequirements": { "type": "string" },
+        "sunlight": { "type": "string" },
+        "wateringFrequency": { "type": "string" },
+        "fertilizerGuidance": { "type": "string" },
+        "propagationMethod": { "type": "string" },
+        "floweringOrFruitingSeason": { "type": "string" },
+        "growthSize": { "type": "string" },
+        "indoorOutdoorSuitability": { "type": "string" },
+        "plainsHillSuitability": { "type": "string" },
+        "commonPestsDiseases": { "type": "string" },
+        "careInstructionsEn": { "type": "string" },
+        "careInstructionsBn": { "type": "string" },
+        "careInstructionsHi": { "type": "string" },
+        "verifiedNurseryIdsCsv": { "type": "string" },
+        "isRare": { "type": "boolean" },
+        "isVerifiedEntry": { "type": "boolean" },
+        "publicationStatus": { "type": "string", "enum": ["PUBLISHED", "DRAFT_REVIEW_REQUIRED"] },
+        "sourceReference": { "type": "string" },
+        "lastVerifiedDate": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["plantId", "nameEn", "nameBn", "nameHi", "scientificName", "primaryGroup", "visualAssetKey", "isRare", "isVerifiedEntry", "sourceReference", "lastVerifiedDate"]
+    },
+    "WbNurseryDirectoryEntry": {
+      "title": "WbNurseryDirectoryEntry",
+      "description": "West Bengal district-wise nursery directory listing with strict pending-verification provenance and zero unverified contacts",
+      "type": "object",
+      "properties": {
+        "nurseryId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "businessNameBn": { "type": "string" },
+        "businessNameHi": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "fullAddress": { "type": "string" },
+        "districtCode": { "type": "string" },
+        "locality": { "type": "string" },
+        "state": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "websiteOrSocial": { "type": "string" },
+        "openingHours": { "type": "string" },
+        "availablePlantCategoriesCsv": { "type": "string" },
+        "availablePlantIdsCsv": { "type": "string" },
+        "supportsWholesale": { "type": "boolean" },
+        "supportsRetail": { "type": "boolean" },
+        "deliveryAvailable": { "type": "boolean" },
+        "verificationStatus": { "type": "string", "enum": ["PENDING_VERIFICATION", "VERIFIED_PARTNER", "ADMIN_VERIFIED"] },
+        "ownerConsentStatus": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "sourceReference": { "type": "string" },
+        "lastVerifiedDate": { "type": "string" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nurseryId", "businessName", "districtCode", "state", "verificationStatus", "isVerified", "sourceReference", "lastVerifiedDate"]
+    },
+    "PromoBanner": {
+      "title": "PromoBanner",
+      "description": "Strictly language-isolated (bn/hi/en) home carousel promotional banner managed by admins",
+      "type": "object",
+      "properties": {
+        "languageCode": { "type": "string", "enum": ["bn", "hi", "en"] },
+        "orderIndex": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "badgeText": { "type": "string" },
+        "ctaLabel": { "type": "string" },
+        "drawableResName": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "targetCardId": { "type": "string" },
+        "isPoster": { "type": "boolean" },
+        "hideTextOverlay": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["languageCode", "orderIndex", "isActive", "title", "subtitle", "badgeText", "ctaLabel", "drawableResName", "imageUrl", "targetCardId", "isPoster", "hideTextOverlay"]
+    },
+    "MachineryProduct": {
+      "title": "MachineryProduct",
+      "description": "Agricultural machinery catalog and admin-approved seller listing",
+      "type": "object",
+      "properties": {
+        "sellerUserId": { "type": "string" },
+        "dealerId": { "type": "string" },
+        "sellerBusinessName": { "type": "string" },
+        "sellerLocation": { "type": "string" },
+        "sellerLocalityCode": { "type": "string" },
+        "sellerPhone": { "type": "string" },
+        "sellerWhatsapp": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "nameHi": { "type": "string" },
+        "categoryCode": { "type": "string" },
+        "subcategory": { "type": "string" },
+        "brand": { "type": "string" },
+        "modelNumber": { "type": "string" },
+        "condition": { "type": "string", "enum": ["NEW", "USED", "REFURBISHED"] },
+        "forSale": { "type": "boolean" },
+        "forRent": { "type": "boolean" },
+        "salePriceInr": { "type": "number" },
+        "listingOrigin": { "type": "string", "enum": ["REFERENCE_SPEC", "SELLER_LISTING"] },
+        "approvalStatus": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED", "REJECTED"] },
+        "requiresDgcaCompliance": { "type": "boolean" },
+        "requiresEarthmovingSafety": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerUserId", "nameEn", "categoryCode", "condition", "forSale", "forRent", "listingOrigin", "approvalStatus"]
+    },
+    "MachineryDealer": {
+      "title": "MachineryDealer",
+      "description": "Siliguri & North Bengal agricultural machinery shop/dealer record with strict verification and owner consent status",
+      "type": "object",
+      "properties": {
+        "dealerId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "localityCode": { "type": "string" },
+        "district": { "type": "string" },
+        "state": { "type": "string" },
+        "fullAddress": { "type": "string" },
+        "pinCode": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "verificationStatus": { "type": "string", "enum": ["PENDING_VERIFICATION", "VERIFIED_PARTNER", "ADMIN_VERIFIED"] },
+        "ownerConsentStatus": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "isAuthorisedDealerVerified": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dealerId", "businessName", "localityCode", "district", "state", "verificationStatus", "ownerConsentStatus", "isVerified", "isAuthorisedDealerVerified"]
+    },
+    "MachineryFavourite": {
+      "title": "MachineryFavourite",
+      "description": "Saved favourite machinery bookmark per user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "machineId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "machineId"]
+    },
+    "MachineryInquiry": {
+      "title": "MachineryInquiry",
+      "description": "Farmer quotation inquiry or issue report for a machine",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "farmerPhone": { "type": "string" },
+        "machineId": { "type": "string" },
+        "machineName": { "type": "string" },
+        "sellerUserId": { "type": "string" },
+        "inquiryType": { "type": "string", "enum": ["QUOTATION", "REPORT_ISSUE"] },
+        "message": { "type": "string" },
+        "status": { "type": "string" },
+        "sellerReply": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "farmerName", "machineId", "sellerUserId", "inquiryType", "message", "status"]
+    },
+    "MachineryRental": {
+      "title": "MachineryRental",
+      "description": "Farmer rental request for a farm machine",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "farmerPhone": { "type": "string" },
+        "machineId": { "type": "string" },
+        "machineName": { "type": "string" },
+        "sellerUserId": { "type": "string" },
+        "locality": { "type": "string" },
+        "rentalUnit": { "type": "string" },
+        "durationUnits": { "type": "number" },
+        "withOperator": { "type": "boolean" },
+        "deliveryRequired": { "type": "boolean" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "farmerName", "machineId", "sellerUserId", "locality", "rentalUnit", "durationUnits", "status"]
+    },
+    "MachineryServiceRequest": {
+      "title": "MachineryServiceRequest",
+      "description": "Farmer request for field agricultural services (ploughing, harvesting, drone, irrigation)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "farmerPhone": { "type": "string" },
+        "serviceTypeCode": { "type": "string" },
+        "locality": { "type": "string" },
+        "landSizeText": { "type": "string" },
+        "cropName": { "type": "string" },
+        "preferredDate": { "type": "string" },
+        "notes": { "type": "string" },
+        "providerUserId": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "farmerName", "serviceTypeCode", "locality", "status"]
+    },
+    "MachineryVerificationClaim": {
+      "title": "MachineryVerificationClaim",
+      "description": "Business owner claim submission with explicit owner consent confirmation",
+      "type": "object",
+      "properties": {
+        "dealerId": { "type": "string" },
+        "userId": { "type": "string" },
+        "claimNote": { "type": "string" },
+        "status": { "type": "string" },
+        "ownerConsentConfirmed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dealerId", "userId", "claimNote", "status", "ownerConsentConfirmed"]
+    },
+    "MachineryAdminLog": {
+      "title": "MachineryAdminLog",
+      "description": "Immutable admin audit log for machinery & dealer actions",
+      "type": "object",
+      "properties": {
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "summary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminEmail", "action", "targetId", "summary"]
+    },
+    "MachineryManufacturer": {
+      "title": "MachineryManufacturer",
+      "description": "Verified official agricultural machinery OEM portal links (info-only)",
+      "type": "object",
+      "properties": {
+        "nameEn": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "nameHi": { "type": "string" },
+        "countryOrOrigin": { "type": "string" },
+        "focusSummaryEn": { "type": "string" },
+        "officialPortalUrl": { "type": "string" },
+        "dealerLocatorUrl": { "type": "string" },
+        "servicePortalUrl": { "type": "string" },
+        "customerCareHelpline": { "type": "string" },
+        "supportedCategoriesCsv": { "type": "string" },
+        "isVerifiedOfficialLink": { "type": "boolean" },
+        "verificationStatus": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nameEn", "officialPortalUrl", "isVerifiedOfficialLink", "verificationStatus"]
+    },
+    "MachineryDealerOffer": {
+      "title": "MachineryDealerOffer",
+      "description": "Many-to-many dealer catalog offer with optional verified pricing and stock status",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "dealerId": { "type": "string" },
+        "dealerName": { "type": "string" },
+        "localityCode": { "type": "string" },
+        "modelNumber": { "type": "string" },
+        "condition": { "type": "string", "enum": ["NEW", "USED", "REFURBISHED"] },
+        "offersSale": { "type": "boolean" },
+        "offersRent": { "type": "boolean" },
+        "mrpInr": { "type": "number" },
+        "dealerPriceInr": { "type": "number" },
+        "indicativePriceInr": { "type": "number" },
+        "rentalHourlyInr": { "type": "number" },
+        "rentalDailyInr": { "type": "number" },
+        "rentalPerAcreInr": { "type": "number" },
+        "stockStatus": { "type": "string" },
+        "verificationStatus": { "type": "string" },
+        "isOutdatedPrice": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["machineId", "dealerName", "condition", "offersSale", "offersRent", "stockStatus", "verificationStatus", "isOutdatedPrice"]
+    },
+    "MachineryReview": {
+      "title": "MachineryReview",
+      "description": "Farmer rating and review for an equipment listing",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "rating": { "type": "number" },
+        "title": { "type": "string" },
+        "comment": { "type": "string" },
+        "verifiedFarmerFlag": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["machineId", "userId", "userName", "rating", "comment"]
+    },
+    "MachineryResearchQueueItem": {
+      "title": "MachineryResearchQueueItem",
+      "description": "Admin moderation queue for equipment photos and missing specifications",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "equipmentName": { "type": "string" },
+        "categoryCode": { "type": "string" },
+        "missingFieldsNote": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING_RESEARCH", "APPROVED", "REJECTED"] },
+        "submittedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["equipmentName", "status", "submittedBy"]
+    },
+    "FraudReport": {
+      "title": "FraudReport",
+      "description": "User-submitted fraud, scam, or fake-listing report for admin moderation",
+      "type": "object",
+      "properties": {
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "sellerUserId": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "description": { "type": "string" },
+        "reporterUserId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "status": { "type": "string" },
+        "adminNote": { "type": "string" },
+        "resolutionAction": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetType", "targetId", "reasonCode", "description", "reporterUserId", "status"]
+    },
+    "GrievanceTicket": {
+      "title": "GrievanceTicket",
+      "description": "Formal grievance ticket submitted by a farmer or user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "category": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "relatedEntityId": { "type": "string" },
+        "status": { "type": "string" },
+        "adminResponse": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "subject", "description", "status"]
+    },
+    "SellerSuspension": {
+      "title": "SellerSuspension",
+      "description": "Admin-enforced seller suspension state hiding listings and blocking contact",
+      "type": "object",
+      "properties": {
+        "sellerUserId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "isSuspended": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "suspendedByAdmin": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerUserId", "isSuspended", "reason"]
+    },
+    "TrustAuditLog": {
+      "title": "TrustAuditLog",
+      "description": "Immutable admin moderation audit log",
+      "type": "object",
+      "properties": {
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "summary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminEmail", "action", "targetType", "targetId", "summary"]
+    }
+  },
+  "firestore": {
+    "/farmers/{farmerId}": {
+      "schema": "FarmerProfile",
+      "description": "Farmers profiles"
+    },
+    "/farmer_crops/{cropId}": {
+      "schema": "FarmerCrop",
+      "description": "Farmer crop records"
+    },
+    "/tea_gardens/{gardenId}": {
+      "schema": "TeaGarden",
+      "description": "Tea garden manager records"
+    },
+    "/produce_listings/{listingId}": {
+      "schema": "ProduceListing",
+      "description": "Marketplace produce listings"
+    },
+    "/buyer_offers/{offerId}": {
+      "schema": "BuyerOffer",
+      "description": "Direct offers and negotiations on listings"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Confirmed transaction orders"
+    },
+    "/farmer_expenses/{expenseId}": {
+      "schema": "FarmerExpense",
+      "description": "Tracked farm expenditure items"
+    },
+    "/expert_inquiries/{inquiryId}": {
+      "schema": "ExpertInquiry",
+      "description": "Inquiries to agricultural experts"
+    },
+    "/forum_posts/{postId}": {
+      "schema": "ForumPost",
+      "description": "Community forum posts"
+    },
+    "/forum_posts/{postId}/likes/{userId}": {
+      "schema": "ForumPostLike",
+      "description": "Community forum post likes"
+    },
+    "/forum_posts/{postId}/comments/{commentId}": {
+      "schema": "ForumComment",
+      "description": "Community forum comments"
+    },
+    "/forum_reports/{reportId}": {
+      "schema": "ForumReport",
+      "description": "Community forum abuse/misinformation reports"
+    },
+    "/forum_user_moderation/{userId}": {
+      "schema": "ForumUserModeration",
+      "description": "User behavior moderation records and strikes"
+    },
+    "/government_schemes/{schemeId}": {
+      "schema": "GovernmentScheme",
+      "description": "Verified official government farmer schemes directory"
+    },
+    "/ai_admin_config/{configId}": {
+      "schema": "AiAdminConfig",
+      "description": "Admin AI provider routing and proxy settings"
+    },
+    "/ai_knowledge_docs/{docId}": {
+      "schema": "AiKnowledgeDoc",
+      "description": "Admin curated verified agricultural RAG sources"
+    },
+    "/ai_telemetry_logs/{logId}": {
+      "schema": "AiTelemetryLog",
+      "description": "Privacy-safe AI latency, failover, and error logs"
+    },
+    "/ai_feedback/{feedbackId}": {
+      "schema": "AiFeedback",
+      "description": "Farmer feedback on AI assistant helpfulness"
+    },
+    "/seo_articles/{articleId}": {
+      "schema": "SeoArticle",
+      "description": "Published multilingual public agricultural Knowledge Hub & Crop SEO articles"
+    },
+    "/seo_config/{configId}": {
+      "schema": "SeoConfig",
+      "description": "Admin SEO crawler toggles and GSC meta token configuration"
+    },
+    "/seo_analytics/{eventId}": {
+      "schema": "SeoAnalyticsEvent",
+      "description": "Privacy-safe search discovery referral buckets (zero PII)"
+    },
+    "/plant_kingdom/{plantId}": {
+      "schema": "PlantKingdomEntry",
+      "description": "Master Plant Kingdom botanical entries synchronized by admins"
+    },
+    "/wb_nurseries/{nurseryId}": {
+      "schema": "WbNurseryDirectoryEntry",
+      "description": "District-wise West Bengal nursery directory records with verification status"
+    },
+    "/promo_banners/{bannerId}": {
+      "schema": "PromoBanner",
+      "description": "Language-isolated promotional home carousel banners"
+    },
+    "/machinery_products/{machineId}": {
+      "schema": "MachineryProduct",
+      "description": "Machinery reference catalog specs and seller machinery listings"
+    },
+    "/machinery_dealers/{dealerId}": {
+      "schema": "MachineryDealer",
+      "description": "Siliguri & North Bengal machinery dealers directory"
+    },
+    "/machinery_favourites/{favId}": {
+      "schema": "MachineryFavourite",
+      "description": "Farmer saved favourite machines"
+    },
+    "/machinery_inquiries/{inquiryId}": {
+      "schema": "MachineryInquiry",
+      "description": "Quotation requests and listing issue reports"
+    },
+    "/machinery_rentals/{rentalId}": {
+      "schema": "MachineryRental",
+      "description": "Machinery rental requests"
+    },
+    "/machinery_service_requests/{requestId}": {
+      "schema": "MachineryServiceRequest",
+      "description": "Field agricultural service requests"
+    },
+    "/machinery_verification/{claimId}": {
+      "schema": "MachineryVerificationClaim",
+      "description": "Owner consent-verified business claim submissions"
+    },
+    "/machinery_admin_logs/{logId}": {
+      "schema": "MachineryAdminLog",
+      "description": "Immutable admin audit logs for machinery moderation"
+    },
+    "/machinery_manufacturers/{oemId}": {
+      "schema": "MachineryManufacturer",
+      "description": "Official agricultural equipment OEM directory links"
+    },
+    "/machinery_dealer_offers/{offerId}": {
+      "schema": "MachineryDealerOffer",
+      "description": "Dealer catalog offers linking equipment and dealers"
+    },
+    "/machinery_reviews/{reviewId}": {
+      "schema": "MachineryReview",
+      "description": "Farmer equipment ratings and reviews"
+    },
+    "/machinery_research_queue/{itemId}": {
+      "schema": "MachineryResearchQueueItem",
+      "description": "Admin photo and specification verification queue"
+    },
+    "/fraud_reports/{reportId}": {
+      "schema": "FraudReport",
+      "description": "User anti-fraud reports reviewed by admin"
+    },
+    "/grievance_tickets/{ticketId}": {
+      "schema": "GrievanceTicket",
+      "description": "Farmer grievance and redressal tickets"
+    },
+    "/seller_suspensions/{sellerId}": {
+      "schema": "SellerSuspension",
+      "description": "Seller suspension enforcement flags"
+    },
+    "/trust_audit_logs/{logId}": {
+      "schema": "TrustAuditLog",
+      "description": "Immutable trust & safety admin audit log"
+    }
+  }
+}
