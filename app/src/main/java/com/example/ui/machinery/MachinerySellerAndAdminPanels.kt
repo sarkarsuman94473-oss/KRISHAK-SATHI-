@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Preview
 import androidx.compose.material.icons.filled.RateReview
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.session.UserSessionManager
 import com.example.data.model.AppLanguage
 import com.example.data.model.MachineryCategory
 import com.example.data.model.MachineryCondition
@@ -89,6 +91,9 @@ import com.example.data.model.MachineryResearchQueueItem
 import com.example.data.model.NurseryVerificationStatus
 import com.example.data.repository.MachineryRepository
 import com.example.data.repository.TrustAndSafetyRepository
+import com.example.ui.components.OfflineModeBanner
+import com.example.util.L10n
+import com.example.util.NetworkConnectivityMonitor
 import com.example.ui.theme.RoyalAlertBg
 import com.example.ui.theme.RoyalAlertText
 import com.example.ui.theme.RoyalBorder
@@ -122,8 +127,31 @@ fun MachinerySellerPanel(
     val trustRepo = remember { TrustAndSafetyRepository(context) }
     val suspendedSellerIds by trustRepo.observeSuspendedSellerIds().collectAsState(initial = emptySet())
     val isSellerSuspended = userId in suspendedSellerIds
+    val networkStatus by NetworkConnectivityMonitor.status.collectAsState()
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSyncing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { repo.ensureSeeded() }
+    fun refreshFromCloud() {
+        isSyncing = true
+        syncErrorMessage = null
+        scope.launch {
+            repo.ensureSeeded()
+            if (UserSessionManager.hasCloudFirebaseSession(context)) {
+                val pRes = repo.pullProductsResult()
+                val rRes = repo.pullUserRequestsAndDealersFromFirestore(
+                    userId = userId,
+                    isAdmin = UserSessionManager.isAdmin(context)
+                )
+                val err = pRes.exceptionOrNull() ?: rRes.exceptionOrNull()
+                if (err != null) {
+                    syncErrorMessage = err.localizedMessage ?: "Cloud sync failed"
+                }
+            }
+            isSyncing = false
+        }
+    }
+
+    LaunchedEffect(userId) { refreshFromCloud() }
 
     val allProducts by repo.observeAllProducts().collectAsState(initial = emptyList())
     val allInquiries by repo.observeAllInquiries().collectAsState(initial = emptyList())
@@ -134,13 +162,13 @@ fun MachinerySellerPanel(
         allProducts.filter { it.sellerUserId == userId }
     }
     val relevantInquiries = remember(allInquiries, userId) {
-        allInquiries.filter { it.sellerUserId == userId || it.sellerUserId.isBlank() }
+        allInquiries.filter { it.sellerUserId.isNotBlank() && it.sellerUserId == userId }
     }
     val relevantRentals = remember(allRentals, userId) {
-        allRentals.filter { it.sellerUserId == userId || it.sellerUserId.isBlank() }
+        allRentals.filter { it.sellerUserId.isNotBlank() && it.sellerUserId == userId }
     }
     val relevantServices = remember(allServices, userId) {
-        allServices.filter { it.providerUserId == userId || it.providerUserId.isBlank() }
+        allServices.filter { it.providerUserId.isNotBlank() && it.providerUserId == userId }
     }
 
     var showListingEditor by remember { mutableStateOf<MachineryProduct?>(null) }
@@ -152,6 +180,42 @@ fun MachinerySellerPanel(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (!networkStatus.isOnline) {
+            item {
+                OfflineModeBanner(
+                    language = currentLanguage,
+                    onRetryCheck = {
+                        NetworkConnectivityMonitor.refreshNow(context)
+                        refreshFromCloud()
+                    }
+                )
+            }
+        } else if (!syncErrorMessage.isNullOrBlank()) {
+            item {
+                Surface(
+                    color = RoyalAlertBg,
+                    border = BorderStroke(1.dp, RoyalAlertText.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("machinery_seller_sync_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = syncErrorMessage ?: "",
+                            color = RoyalAlertText,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { refreshFromCloud() }, enabled = !isSyncing) {
+                            Text(L10n.t("net_retry_btn", currentLanguage), color = RoyalSoftGold)
+                        }
+                    }
+                }
+            }
+        }
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
@@ -307,12 +371,30 @@ fun MachinerySellerPanel(
                     Text("Locality: ${rent.locality} • Status: ${rent.status}", fontSize = 11.sp, color = RoyalTextSecondary)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(
-                            onClick = { scope.launch { repo.updateRentalStatus(rent.id, "CONFIRMED") } },
+                            onClick = {
+                                scope.launch {
+                                    val res = repo.updateRentalStatus(rent.id, "CONFIRMED", actorUserId = userId)
+                                    Toast.makeText(
+                                        context,
+                                        if (res.isSuccess) "Rental confirmed" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to confirm rental"),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald),
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) { Text("Confirm", fontSize = 11.sp) }
                         OutlinedButton(
-                            onClick = { scope.launch { repo.updateRentalStatus(rent.id, "COMPLETED") } },
+                            onClick = {
+                                scope.launch {
+                                    val res = repo.updateRentalStatus(rent.id, "COMPLETED", actorUserId = userId)
+                                    Toast.makeText(
+                                        context,
+                                        if (res.isSuccess) "Rental marked completed" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to update rental"),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) { Text("Mark Completed", fontSize = 11.sp) }
                     }
@@ -330,12 +412,30 @@ fun MachinerySellerPanel(
                     Text("${srv.locality} • ${srv.landSizeText} • Status: ${srv.status}", fontSize = 11.sp, color = RoyalTextSecondary)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(
-                            onClick = { scope.launch { repo.updateServiceStatus(srv.id, "CONFIRMED") } },
+                            onClick = {
+                                scope.launch {
+                                    val res = repo.updateServiceStatus(srv.id, "CONFIRMED", actorUserId = userId)
+                                    Toast.makeText(
+                                        context,
+                                        if (res.isSuccess) "Service accepted" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to accept service"),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald),
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) { Text("Accept Service", fontSize = 11.sp) }
                         OutlinedButton(
-                            onClick = { scope.launch { repo.updateServiceStatus(srv.id, "COMPLETED") } },
+                            onClick = {
+                                scope.launch {
+                                    val res = repo.updateServiceStatus(srv.id, "COMPLETED", actorUserId = userId)
+                                    Toast.makeText(
+                                        context,
+                                        if (res.isSuccess) "Service marked completed" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to update service"),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) { Text("Completed", fontSize = 11.sp) }
                     }
@@ -357,7 +457,11 @@ fun MachinerySellerPanel(
                         onUploaded(info.downloadUrl, info.storagePath)
                         Toast.makeText(context, "Compressed & uploaded (${info.byteSize / 1024} KB)", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Using local preview URI until sign-in/online sync", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            res.exceptionOrNull()?.localizedMessage ?: "Cloud photo upload requires Google Sign-In & internet",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             },
@@ -367,10 +471,12 @@ fun MachinerySellerPanel(
                     val res = repo.submitSellerMachineListing(submitted, isAdmin = false)
                     Toast.makeText(
                         context,
-                        if (res.isSuccess) "Submitted for Admin Verification (PENDING_APPROVAL)" else (res.exceptionOrNull()?.message ?: "Error"),
+                        if (res.isSuccess) "Submitted for Admin Verification (PENDING_APPROVAL)" else (res.exceptionOrNull()?.localizedMessage ?: "Error saving listing"),
                         Toast.LENGTH_LONG
                     ).show()
-                    showListingEditor = null
+                    if (res.isSuccess) {
+                        showListingEditor = null
+                    }
                 }
             }
         )
@@ -395,8 +501,15 @@ fun MachinerySellerPanel(
                 Button(
                     onClick = {
                         scope.launch {
-                            repo.updateInquiryReply(inq.id, replyText.trim(), "RESPONDED")
-                            replyingInquiry = null
+                            val res = repo.updateInquiryReply(inq.id, replyText.trim(), "RESPONDED", actorUserId = userId)
+                            Toast.makeText(
+                                context,
+                                if (res.isSuccess) "Reply sent" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to send reply"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            if (res.isSuccess) {
+                                replyingInquiry = null
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald)
@@ -418,10 +531,12 @@ fun MachinerySellerPanel(
                     val res = repo.upsertDealerOffer(offer, userId)
                     Toast.makeText(
                         context,
-                        if (res.isSuccess) "Dealer offer published" else (res.exceptionOrNull()?.message ?: "Error"),
+                        if (res.isSuccess) "Dealer offer published" else (res.exceptionOrNull()?.localizedMessage ?: "Error saving dealer offer"),
                         Toast.LENGTH_SHORT
                     ).show()
-                    showDealerOfferEditor = false
+                    if (res.isSuccess) {
+                        showDealerOfferEditor = false
+                    }
                 }
             }
         )
@@ -437,6 +552,8 @@ fun AdminMachineryManagementScreen(
     modifier: Modifier = Modifier
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
+    val isAuthorizedAdmin = remember(adminEmail) { UserSessionManager.isAdmin(context) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -458,11 +575,27 @@ fun AdminMachineryManagementScreen(
             modifier = Modifier.fillMaxSize().padding(innerPadding).background(RoyalGreenPrimaryBg),
             contentAlignment = Alignment.TopCenter
         ) {
-            AdminMachineryManagementContent(
-                currentLanguage = currentLanguage,
-                adminEmail = adminEmail,
-                modifier = Modifier.fillMaxSize().widthIn(max = 840.dp)
-            )
+            if (!isAuthorizedAdmin) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = RoyalAlertText, modifier = Modifier.size(44.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Admin access required", color = RoyalTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Back", color = RoyalSoftGold)
+                    }
+                }
+            } else {
+                AdminMachineryManagementContent(
+                    currentLanguage = currentLanguage,
+                    adminEmail = adminEmail,
+                    modifier = Modifier.fillMaxSize().widthIn(max = 840.dp)
+                )
+            }
         }
     }
 }
@@ -478,7 +611,13 @@ fun AdminMachineryManagementContent(
     val scope = rememberCoroutineScope()
     val repo = remember { MachineryRepository(context) }
 
-    LaunchedEffect(Unit) { repo.ensureSeeded() }
+    LaunchedEffect(Unit) {
+        repo.ensureSeeded()
+        if (UserSessionManager.hasCloudFirebaseSession(context)) {
+            repo.pullProductsResult()
+            repo.pullUserRequestsAndDealersFromFirestore(adminEmail, isAdmin = true)
+        }
+    }
 
     val allProducts by repo.observeAllProducts().collectAsState(initial = emptyList())
     val allDealers by repo.observeAllDealers().collectAsState(initial = emptyList())
@@ -612,7 +751,16 @@ fun AdminMachineryManagementContent(
                                         Text("Review & Preview", fontSize = 11.sp, color = RoyalSoftGold)
                                     }
                                     Button(
-                                        onClick = { scope.launch { repo.approveOrRejectMachineListing(m.id, true, adminEmail) } },
+                                        onClick = {
+                                            scope.launch {
+                                                val res = repo.approveOrRejectMachineListing(m.id, true, adminEmail)
+                                                Toast.makeText(
+                                                    context,
+                                                    if (res.isSuccess) "Listing approved" else (res.exceptionOrNull()?.localizedMessage ?: "Approval failed"),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
                                         colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald),
                                         modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
@@ -621,7 +769,16 @@ fun AdminMachineryManagementContent(
                                         Text("Approve", fontSize = 11.sp)
                                     }
                                     OutlinedButton(
-                                        onClick = { scope.launch { repo.approveOrRejectMachineListing(m.id, false, adminEmail, "Incomplete specs/verification") } },
+                                        onClick = {
+                                            scope.launch {
+                                                val res = repo.approveOrRejectMachineListing(m.id, false, adminEmail, "Incomplete specs/verification")
+                                                Toast.makeText(
+                                                    context,
+                                                    if (res.isSuccess) "Listing rejected" else (res.exceptionOrNull()?.localizedMessage ?: "Rejection failed"),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
                                         modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
                                         Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp), tint = RoyalAlertText)
@@ -629,7 +786,16 @@ fun AdminMachineryManagementContent(
                                         Text("Reject", fontSize = 11.sp, color = RoyalAlertText)
                                     }
                                     OutlinedButton(
-                                        onClick = { scope.launch { repo.deleteMachineListing(m.id, adminEmail) } },
+                                        onClick = {
+                                            scope.launch {
+                                                val res = repo.deleteMachineListing(m.id, adminEmail)
+                                                Toast.makeText(
+                                                    context,
+                                                    if (res.isSuccess) "Listing deleted" else (res.exceptionOrNull()?.localizedMessage ?: "Delete failed"),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
                                         modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
                                         Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = RoyalAlertText)
@@ -793,7 +959,7 @@ fun AdminMachineryManagementContent(
                 Button(
                     onClick = {
                         scope.launch {
-                            repo.verifyOrEditDealerByAdmin(
+                            val res = repo.verifyOrEditDealerByAdmin(
                                 dealer = d.copy(
                                     fullAddress = address.trim().ifBlank { null },
                                     pinCode = pinCode.trim().ifBlank { null },
@@ -806,8 +972,12 @@ fun AdminMachineryManagementContent(
                                 markAuthorisedDealer = markAuth,
                                 adminEmail = adminEmail
                             )
-                            Toast.makeText(context, "Dealer updated", Toast.LENGTH_SHORT).show()
-                            editingDealer = null
+                            Toast.makeText(
+                                context,
+                                if (res.isSuccess) "Dealer updated" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to update dealer"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            if (res.isSuccess) editingDealer = null
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald)
@@ -831,6 +1001,12 @@ fun AdminMachineryManagementContent(
                         val info = res.getOrThrow()
                         onUploaded(info.downloadUrl, info.storagePath)
                         Toast.makeText(context, "Uploaded to Storage (${info.byteSize / 1024} KB)", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            res.exceptionOrNull()?.localizedMessage ?: "Cloud photo upload failed",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             },
@@ -838,8 +1014,12 @@ fun AdminMachineryManagementContent(
             onSave = { submitted ->
                 scope.launch {
                     val res = repo.submitSellerMachineListing(submitted, isAdmin = true)
-                    Toast.makeText(context, if (res.isSuccess) "Verified listing published" else "Error", Toast.LENGTH_SHORT).show()
-                    addingVerifiedListing = null
+                    Toast.makeText(
+                        context,
+                        if (res.isSuccess) "Verified listing published" else (res.exceptionOrNull()?.localizedMessage ?: "Error publishing listing"),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    if (res.isSuccess) addingVerifiedListing = null
                 }
             }
         )
@@ -862,10 +1042,10 @@ fun AdminMachineryManagementContent(
                     )
                     Toast.makeText(
                         context,
-                        if (res.isSuccess) "Equipment review updated" else "Failed to update review",
+                        if (res.isSuccess) "Equipment review updated" else (res.exceptionOrNull()?.localizedMessage ?: "Failed to update review"),
                         Toast.LENGTH_SHORT
                     ).show()
-                    reviewingEquipment = null
+                    if (res.isSuccess) reviewingEquipment = null
                 }
             }
         )
@@ -879,10 +1059,10 @@ fun AdminMachineryManagementContent(
                     val res = repo.upsertManufacturer(oem, adminEmail)
                     Toast.makeText(
                         context,
-                        if (res.isSuccess) "OEM portal saved" else (res.exceptionOrNull()?.message ?: "Error"),
+                        if (res.isSuccess) "OEM portal saved" else (res.exceptionOrNull()?.localizedMessage ?: "Error"),
                         Toast.LENGTH_SHORT
                     ).show()
-                    showAddOemDialog = false
+                    if (res.isSuccess) showAddOemDialog = false
                 }
             }
         )
@@ -897,10 +1077,10 @@ fun AdminMachineryManagementContent(
                     val res = repo.upsertDealerOffer(offer, adminEmail)
                     Toast.makeText(
                         context,
-                        if (res.isSuccess) "Dealer offer saved" else (res.exceptionOrNull()?.message ?: "Error"),
+                        if (res.isSuccess) "Dealer offer saved" else (res.exceptionOrNull()?.localizedMessage ?: "Error"),
                         Toast.LENGTH_SHORT
                     ).show()
-                    showAddOfferDialog = false
+                    if (res.isSuccess) showAddOfferDialog = false
                 }
             }
         )
@@ -939,10 +1119,10 @@ fun AdminMachineryManagementContent(
                             )
                             Toast.makeText(
                                 context,
-                                if (res.isSuccess) "Added to research queue" else "Error",
+                                if (res.isSuccess) "Added to research queue" else (res.exceptionOrNull()?.localizedMessage ?: "Error"),
                                 Toast.LENGTH_SHORT
                             ).show()
-                            showNewResearchDialog = false
+                            if (res.isSuccess) showNewResearchDialog = false
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald)
@@ -1084,10 +1264,14 @@ private fun MachineListingFormDialog(
 
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            val localToken = uri.toString()
-            photoUriCsv = if (photoUriCsv.isBlank()) localToken else "$photoUriCsv,$localToken"
             onUploadPhoto?.invoke(uri, draftId) { downloadUrl, storagePath ->
-                val updatedPhotos = photoUriCsv.split(",").map { it.trim() }.filter { it.isNotBlank() && it != localToken } + downloadUrl
+                val updatedPhotos = photoUriCsv.split(",")
+                    .map { it.trim() }
+                    .filter {
+                        it.isNotBlank() &&
+                            !it.startsWith("content://", ignoreCase = true) &&
+                            !it.startsWith("file://", ignoreCase = true)
+                    } + downloadUrl
                 photoUriCsv = updatedPhotos.distinct().joinToString(",")
                 storagePathsCsv = listOf(storagePathsCsv, storagePath)
                     .flatMap { it.split(",") }

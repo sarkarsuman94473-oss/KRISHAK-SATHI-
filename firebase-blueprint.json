@@ -859,6 +859,107 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["adminEmail", "action", "targetType", "targetId", "summary"]
+    },
+    "UserRoleMembership": {
+      "title": "UserRoleMembership",
+      "description": "Authorized multi-role memberships and dashboard preference for a single account",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "approvedRoles": { "type": "array", "items": { "type": "string" } },
+        "platformVerified": { "type": "boolean" },
+        "verifiedBusinessName": { "type": "string" },
+        "activeDashboardMode": { "type": "string", "enum": ["FARMER_DASHBOARD", "PARTNER_DASHBOARD"] },
+        "updatedByAdminEmail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "approvedRoles", "platformVerified", "activeDashboardMode"]
+    },
+    "PartnerRegistration": {
+      "title": "PartnerRegistration",
+      "description": "Partner verification request collecting business details, service categories, area, and verification docs",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "applicantName": { "type": "string" },
+        "businessName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "whatsappPhone": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "businessLocation": { "type": "string" },
+        "district": { "type": "string" },
+        "state": { "type": "string" },
+        "pinCode": { "type": "string" },
+        "serviceCategories": { "type": "array", "items": { "type": "string" } },
+        "serviceArea": { "type": "string" },
+        "serviceRadiusKm": { "type": "number" },
+        "documentType": { "type": "string" },
+        "licenseNumber": { "type": "string" },
+        "gstNumber": { "type": "string" },
+        "documentNotes": { "type": "string" },
+        "verificationDocumentNames": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"] },
+        "platformVerified": { "type": "boolean" },
+        "approvedRoles": { "type": "array", "items": { "type": "string" } },
+        "adminNotes": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "reviewedByAdminEmail": { "type": "string" },
+        "submittedAtMillis": { "type": "number" },
+        "reviewedAtMillis": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "applicantName", "businessName", "contactPhone", "businessLocation", "serviceCategories", "serviceArea", "status", "platformVerified"]
+    },
+    "VideoLesson": {
+      "title": "VideoLesson",
+      "description": "Multilingual Krishi Shiksha educational farming video lesson and storyboard guide",
+      "type": "object",
+      "properties": {
+        "lessonNumber": { "type": "number" },
+        "categoryCode": { "type": "string" },
+        "stageCode": { "type": "string" },
+        "linkedCropId": { "type": "string" },
+        "titleBn": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "summaryBn": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "durationSeconds": { "type": "number" },
+        "thumbnailUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "audioUrlBn": { "type": "string" },
+        "audioUrlHi": { "type": "string" },
+        "audioUrlEn": { "type": "string" },
+        "subtitleUrlBn": { "type": "string" },
+        "subtitleUrlHi": { "type": "string" },
+        "subtitleUrlEn": { "type": "string" },
+        "publicationStatus": { "type": "string", "enum": ["DRAFT", "UNDER_EXPERT_REVIEW", "PUBLISHED", "UNPUBLISHED"] },
+        "isReviewedByExpert": { "type": "boolean" },
+        "lastReviewedDate": { "type": "string" },
+        "contentSource": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["lessonNumber", "categoryCode", "stageCode", "publicationStatus", "isReviewedByExpert", "durationSeconds"]
+    },
+    "FarmerVideoProgress": {
+      "title": "FarmerVideoProgress",
+      "description": "Per-farmer playback resume position, completion flag, and bookmarks",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "lessonId": { "type": "string" },
+        "lastPositionSeconds": { "type": "number" },
+        "totalDurationSeconds": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "isFavorite": { "type": "boolean" },
+        "lastWatchedLanguage": { "type": "string", "enum": ["bn", "hi", "en"] },
+        "updatedAtMillis": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "lessonId", "lastPositionSeconds", "totalDurationSeconds", "completed", "isFavorite", "lastWatchedLanguage"]
     }
   },
   "firestore": {
@@ -1021,6 +1122,22 @@
     "/trust_audit_logs/{logId}": {
       "schema": "TrustAuditLog",
       "description": "Immutable trust & safety admin audit log"
+    },
+    "/user_roles/{userId}": {
+      "schema": "UserRoleMembership",
+      "description": "Approved marketplace roles per user identity"
+    },
+    "/partner_registrations/{registrationId}": {
+      "schema": "PartnerRegistration",
+      "description": "Partner applications, documents, and admin approval status"
+    },
+    "/video_lessons/{lessonId}": {
+      "schema": "VideoLesson",
+      "description": "Educational agricultural video lessons and storyboards managed by Admins"
+    },
+    "/farmer_video_progress/{progressId}": {
+      "schema": "FarmerVideoProgress",
+      "description": "Per-user video playback progress and favorite bookmarks"
     }
   }
 }

@@ -1,15 +1,38 @@
 package com.example.ui.nursery
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,17 +45,35 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.SubcomposeAsyncImage
 import com.example.data.datasource.BotanicalMorphology
+import com.example.data.datasource.MediaVerificationStatus
+import com.example.data.datasource.PlantMediaRecord
 import com.example.data.datasource.PlantPhotoRegistry
 import com.example.data.datasource.PlantVisualProfile
 import com.example.data.model.AppLanguage
 import com.example.data.model.PlantKingdomEntry
+import com.example.ui.theme.RoyalBorder
+import com.example.ui.theme.RoyalGold
+import com.example.ui.theme.RoyalGreenCardBg
+import com.example.ui.theme.RoyalGreenSecondaryBg
+import com.example.ui.theme.RoyalSoftGold
+import com.example.ui.theme.RoyalSuccessBg
+import com.example.ui.theme.RoyalSuccessText
+import com.example.ui.theme.RoyalTextPrimary
+import com.example.ui.theme.RoyalTextSecondary
+import com.example.ui.theme.RoyalWarningBg
+import com.example.ui.theme.RoyalWarningText
+import com.example.util.L10n
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -140,6 +181,216 @@ fun PlantPhotoAccuracyBadge(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
         )
+    }
+}
+
+@Composable
+fun PlantStageMediaArtwork(
+    record: PlantMediaRecord,
+    plant: PlantKingdomEntry,
+    lang: AppLanguage,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    val profile = PlantPhotoRegistry.getProfile(plant.plantId)
+    val isVerified = record.verificationStatus == MediaVerificationStatus.VERIFIED
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .testTag("plant_stage_artwork_${record.stage.code}")
+    ) {
+        when {
+            record.customUri.isNotBlank() -> {
+                SubcomposeAsyncImage(
+                    model = record.customUri,
+                    contentDescription = "${plant.getDisplayName(lang)} - ${record.stage.getDisplayName(lang)}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    error = { BotanicalSpecimenCanvas(profile = profile, modifier = Modifier.fillMaxSize()) }
+                )
+            }
+            record.drawableResId != null -> {
+                Image(
+                    painter = painterResource(id = record.drawableResId),
+                    contentDescription = "${plant.getDisplayName(lang)} - ${record.stage.getDisplayName(lang)}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> {
+                BotanicalSpecimenCanvas(profile = profile, modifier = Modifier.fillMaxSize())
+            }
+        }
+
+        Surface(
+            color = if (isVerified) RoyalSuccessBg else RoyalWarningBg,
+            border = BorderStroke(1.dp, if (isVerified) RoyalSuccessText.copy(alpha = 0.5f) else RoyalGold.copy(alpha = 0.7f)),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = if (isVerified) L10n.t("plant_media_verified", lang) else L10n.t("plant_media_pending", lang),
+                color = if (isVerified) RoyalSuccessText else RoyalWarningText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+
+        Surface(
+            color = Color(0xCC042419),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = record.stage.getDisplayName(lang),
+                color = RoyalSoftGold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+
+        if (onClick != null) {
+            Surface(
+                color = Color(0xCC042419),
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.ZoomIn,
+                        contentDescription = L10n.t("plant_tap_zoom", lang),
+                        tint = RoyalSoftGold,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PlantFullScreenMediaDialog(
+    record: PlantMediaRecord,
+    plant: PlantKingdomEntry,
+    lang: AppLanguage,
+    onDismiss: () -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    val profile = PlantPhotoRegistry.getProfile(plant.plantId)
+    val isVerified = record.verificationStatus == MediaVerificationStatus.VERIFIED
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, RoyalGold),
+            colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("plant_fullscreen_media_dialog")
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "${plant.getDisplayName(lang)} • ${record.stage.getDisplayName(lang)}",
+                            color = RoyalTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = if (isVerified) L10n.t("plant_media_verified", lang) else L10n.t("plant_media_pending", lang),
+                            color = if (isVerified) RoyalSuccessText else RoyalWarningText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(
+                            onClick = { scale = if (scale > 1.2f) 1f else 2f },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (scale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
+                                contentDescription = L10n.t("plant_tap_zoom", lang),
+                                tint = RoyalSoftGold
+                            )
+                        }
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = RoyalTextPrimary)
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(290.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(RoyalGreenSecondaryBg)
+                        .clickable { scale = if (scale >= 2f) 1f else scale + 0.5f }
+                ) {
+                    val imgModifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                    when {
+                        record.customUri.isNotBlank() -> {
+                            SubcomposeAsyncImage(
+                                model = record.customUri,
+                                contentDescription = plant.getDisplayName(lang),
+                                contentScale = ContentScale.Crop,
+                                modifier = imgModifier,
+                                error = { BotanicalSpecimenCanvas(profile = profile, modifier = imgModifier) }
+                            )
+                        }
+                        record.drawableResId != null -> {
+                            Image(
+                                painter = painterResource(id = record.drawableResId),
+                                contentDescription = plant.getDisplayName(lang),
+                                contentScale = ContentScale.Crop,
+                                modifier = imgModifier
+                            )
+                        }
+                        else -> {
+                            BotanicalSpecimenCanvas(profile = profile, modifier = imgModifier)
+                        }
+                    }
+                }
+
+                Surface(
+                    color = RoyalGreenSecondaryBg,
+                    border = BorderStroke(1.dp, RoyalBorder),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(text = record.sourceName, color = RoyalSoftGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "${record.creator} • ${record.license}", color = RoyalTextSecondary, fontSize = 11.sp)
+                        Text(text = "${record.attribution} (${record.verificationDate})", color = RoyalTextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
     }
 }
 

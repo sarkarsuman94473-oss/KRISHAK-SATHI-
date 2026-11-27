@@ -233,56 +233,64 @@ class NurseryApplicationRepository(private val context: Context) {
     }
 
     suspend fun adminApproveApplication(appId: String, adminEmail: String) {
-        val list = _applicationsFlow.value.toMutableList()
+        val previous = _applicationsFlow.value
+        val list = previous.toMutableList()
         val index = list.indexOfFirst { it.id == appId }
-        if (index >= 0) {
-            val updated = list[index].copy(
-                status = NurseryApplicationStatus.APPROVED.code,
-                adminRejectionReason = "",
-                reviewedByAdminEmail = adminEmail,
-                reviewedAtMillis = System.currentTimeMillis()
-            )
-            list[index] = updated
-            saveToLocalDisk(list)
+        if (index < 0) throw NoSuchElementException("Nursery application not found")
+        val updated = list[index].copy(
+            status = NurseryApplicationStatus.APPROVED.code,
+            adminRejectionReason = "",
+            reviewedByAdminEmail = adminEmail,
+            reviewedAtMillis = System.currentTimeMillis()
+        )
+        list[index] = updated
+        saveToLocalDisk(list)
 
-            // If the applicant is the current user on device, upgrade role in session
-            val currentSession = UserSessionManager.getSession(context)
-            if (currentSession != null && currentSession.userId == updated.userId) {
-                UserSessionManager.updateUserRole(context, UserSession.ROLE_NURSERY_OWNER)
-            }
-
-            // Sync to Firestore
+        val firestore = db
+        if (firestore != null && runCatching { Firebase.auth.currentUser }.getOrNull() != null) {
             try {
-                db?.collection("nursery_applications")?.document(appId)?.update(
+                firestore.collection("nursery_applications").document(appId).update(
                     mapOf(
                         "status" to NurseryApplicationStatus.APPROVED.code,
                         "reviewedByAdminEmail" to adminEmail,
                         "reviewedAtMillis" to System.currentTimeMillis(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
-                )?.await()
+                ).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                saveToLocalDisk(previous)
                 Log.e(TAG, "Firestore approve error: ${e.message}")
+                throw e
             }
+        }
+
+        // If the applicant is the current user on device, upgrade role in session
+        val currentSession = UserSessionManager.getSession(context)
+        if (currentSession != null && currentSession.userId == updated.userId) {
+            UserSessionManager.updateUserRole(context, UserSession.ROLE_NURSERY_OWNER)
         }
     }
 
     suspend fun adminRejectApplication(appId: String, reason: String, adminEmail: String) {
-        val list = _applicationsFlow.value.toMutableList()
+        val previous = _applicationsFlow.value
+        val list = previous.toMutableList()
         val index = list.indexOfFirst { it.id == appId }
-        if (index >= 0) {
-            val updated = list[index].copy(
-                status = NurseryApplicationStatus.REJECTED.code,
-                adminRejectionReason = reason,
-                reviewedByAdminEmail = adminEmail,
-                reviewedAtMillis = System.currentTimeMillis()
-            )
-            list[index] = updated
-            saveToLocalDisk(list)
+        if (index < 0) throw NoSuchElementException("Nursery application not found")
+        val updated = list[index].copy(
+            status = NurseryApplicationStatus.REJECTED.code,
+            adminRejectionReason = reason,
+            reviewedByAdminEmail = adminEmail,
+            reviewedAtMillis = System.currentTimeMillis()
+        )
+        list[index] = updated
+        saveToLocalDisk(list)
 
-            // Sync to Firestore
+        val firestore = db
+        if (firestore != null && runCatching { Firebase.auth.currentUser }.getOrNull() != null) {
             try {
-                db?.collection("nursery_applications")?.document(appId)?.update(
+                firestore.collection("nursery_applications").document(appId).update(
                     mapOf(
                         "status" to NurseryApplicationStatus.REJECTED.code,
                         "adminRejectionReason" to reason,
@@ -290,65 +298,83 @@ class NurseryApplicationRepository(private val context: Context) {
                         "reviewedAtMillis" to System.currentTimeMillis(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
-                )?.await()
+                ).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                saveToLocalDisk(previous)
                 Log.e(TAG, "Firestore reject error: ${e.message}")
+                throw e
             }
         }
     }
 
     suspend fun adminSuspendNursery(appId: String, reason: String, adminEmail: String) {
-        val list = _applicationsFlow.value.toMutableList()
+        val previous = _applicationsFlow.value
+        val list = previous.toMutableList()
         val index = list.indexOfFirst { it.id == appId }
-        if (index >= 0) {
-            val updated = list[index].copy(
-                status = NurseryApplicationStatus.SUSPENDED.code,
-                adminRejectionReason = reason,
-                reviewedByAdminEmail = adminEmail,
-                reviewedAtMillis = System.currentTimeMillis()
-            )
-            list[index] = updated
-            saveToLocalDisk(list)
+        if (index < 0) throw NoSuchElementException("Nursery application not found")
+        val updated = list[index].copy(
+            status = NurseryApplicationStatus.SUSPENDED.code,
+            adminRejectionReason = reason,
+            reviewedByAdminEmail = adminEmail,
+            reviewedAtMillis = System.currentTimeMillis()
+        )
+        list[index] = updated
+        saveToLocalDisk(list)
 
+        val firestore = db
+        if (firestore != null && runCatching { Firebase.auth.currentUser }.getOrNull() != null) {
             try {
-                db?.collection("nursery_applications")?.document(appId)?.update(
+                firestore.collection("nursery_applications").document(appId).update(
                     mapOf(
                         "status" to NurseryApplicationStatus.SUSPENDED.code,
                         "adminRejectionReason" to reason,
                         "reviewedByAdminEmail" to adminEmail,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
-                )?.await()
+                ).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                saveToLocalDisk(previous)
                 Log.e(TAG, "Firestore suspend error: ${e.message}")
+                throw e
             }
         }
     }
 
     suspend fun adminRequestInfo(appId: String, note: String, adminEmail: String) {
-        val list = _applicationsFlow.value.toMutableList()
+        val previous = _applicationsFlow.value
+        val list = previous.toMutableList()
         val index = list.indexOfFirst { it.id == appId }
-        if (index >= 0) {
-            val updated = list[index].copy(
-                status = NurseryApplicationStatus.UNDER_REVIEW.code,
-                adminNotes = note,
-                reviewedByAdminEmail = adminEmail,
-                reviewedAtMillis = System.currentTimeMillis()
-            )
-            list[index] = updated
-            saveToLocalDisk(list)
+        if (index < 0) throw NoSuchElementException("Nursery application not found")
+        val updated = list[index].copy(
+            status = NurseryApplicationStatus.UNDER_REVIEW.code,
+            adminNotes = note,
+            reviewedByAdminEmail = adminEmail,
+            reviewedAtMillis = System.currentTimeMillis()
+        )
+        list[index] = updated
+        saveToLocalDisk(list)
 
+        val firestore = db
+        if (firestore != null && runCatching { Firebase.auth.currentUser }.getOrNull() != null) {
             try {
-                db?.collection("nursery_applications")?.document(appId)?.update(
+                firestore.collection("nursery_applications").document(appId).update(
                     mapOf(
                         "status" to NurseryApplicationStatus.UNDER_REVIEW.code,
                         "adminNotes" to note,
                         "reviewedByAdminEmail" to adminEmail,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
-                )?.await()
+                ).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                saveToLocalDisk(previous)
                 Log.e(TAG, "Firestore requestInfo error: ${e.message}")
+                throw e
             }
         }
     }
@@ -357,7 +383,8 @@ class NurseryApplicationRepository(private val context: Context) {
         val effectiveId = if (app.id.isNotBlank()) app.id else "app_nurs_${System.currentTimeMillis()}"
         val finalApp = app.copy(id = effectiveId)
 
-        val list = _applicationsFlow.value.toMutableList()
+        val previous = _applicationsFlow.value
+        val list = previous.toMutableList()
         val index = list.indexOfFirst { it.id == effectiveId || (it.userId == finalApp.userId && finalApp.userId.isNotBlank()) }
         if (index >= 0) {
             list[index] = finalApp
@@ -366,10 +393,9 @@ class NurseryApplicationRepository(private val context: Context) {
         }
         saveToLocalDisk(list)
 
-        // Remote sync if Firebase is active
-        try {
-            val firestore = db
-            if (firestore != null && Firebase.auth.currentUser != null) {
+        val firestore = db
+        if (firestore != null && runCatching { Firebase.auth.currentUser }.getOrNull() != null) {
+            try {
                 val payload = hashMapOf<String, Any>(
                     "id" to finalApp.id,
                     "userId" to finalApp.userId,
@@ -379,8 +405,8 @@ class NurseryApplicationRepository(private val context: Context) {
                     "isMobileVerified" to finalApp.isMobileVerified,
                     "nurseryNameBn" to finalApp.nurseryNameBn,
                     "nurseryNameEn" to finalApp.nurseryNameEn,
-                    "nurseryLogoUrl" to finalApp.nurseryLogoUrl,
-                    "nurseryCoverUrl" to finalApp.nurseryCoverUrl,
+                    "nurseryLogoUrl" to finalApp.nurseryLogoUrl.takeIf { !it.startsWith("content://") }.orEmpty(),
+                    "nurseryCoverUrl" to finalApp.nurseryCoverUrl.takeIf { !it.startsWith("content://") }.orEmpty(),
                     "description" to finalApp.description,
                     "primaryCategory" to finalApp.primaryCategory,
                     "establishmentYear" to finalApp.establishmentYear,
@@ -407,9 +433,13 @@ class NurseryApplicationRepository(private val context: Context) {
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
                 firestore.collection("nursery_applications").document(finalApp.id).set(payload).await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                saveToLocalDisk(previous)
+                Log.e(TAG, "Error syncing to Firestore: ${e.message}")
+                throw e
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing to Firestore: ${e.message}")
         }
     }
 

@@ -51,7 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -90,34 +92,57 @@ private const val TAG = "AuthScreen"
 fun AuthGateScreen(
     currentLanguage: AppLanguage,
     onLanguageChange: (AppLanguage) -> Unit,
-    onAuthSuccess: () -> Unit
+    onAuthSuccess: () -> Unit,
+    authNotice: String? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
     var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember(authNotice) { mutableStateOf(authNotice) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = com.example.ui.theme.RoyalGreenPrimaryBg
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(id = R.drawable.bg_sunrise_golden_paddy),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 480.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .fillMaxSize()
+                    .testTag("welcome_sunrise_background")
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0x99042117),
+                                Color(0xB8062D20),
+                                Color(0xDE041A12)
+                            )
+                        )
+                    )
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 480.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                 // Language Selection Chips (adaptive wrap, >= 48dp height touch targets)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -195,9 +220,11 @@ fun AuthGateScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, com.example.ui.theme.RoyalBorder),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    border = BorderStroke(1.dp, com.example.ui.theme.RoyalGold.copy(alpha = 0.55f)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -322,12 +349,18 @@ fun AuthGateScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Direct Farmer Quick Login (Explicit Local Mode)
+                        // Direct Farmer Quick Login (Explicit Offline-Only Local Mode)
                         OutlinedButton(
                             onClick = {
+                                val localFarmerName = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "কৃষক (অফলাইন)"
+                                    AppLanguage.HINDI -> "किसान (ऑफ़लाइन)"
+                                    AppLanguage.ENGLISH -> "Farmer (Offline)"
+                                }
                                 val defaultFarmerSession = UserSession(
-                                    userId = "farmer_suman_sarkar",
-                                    userName = "Suman Sarkar",
+                                    userId = "local_farmer_offline",
+                                    userName = localFarmerName,
+                                    email = null,
                                     phone = "",
                                     role = UserSession.ROLE_FARMER,
                                     authProvider = UserSession.PROVIDER_FARMER_DIRECT
@@ -345,9 +378,9 @@ fun AuthGateScreen(
                         ) {
                             Text(
                                 text = when (currentLanguage) {
-                                    AppLanguage.BENGALI -> "🌾 কৃষক হিসেবে সরাসরি প্রবেশ (Quick Login)"
-                                    AppLanguage.HINDI -> "🌾 किसान के रूप में सीधा प्रवेश (Quick Login)"
-                                    AppLanguage.ENGLISH -> "🌾 Continue as Farmer (Quick Login)"
+                                    AppLanguage.BENGALI -> "🌾 অফলাইন কৃষক মোড (Quick Login)"
+                                    AppLanguage.HINDI -> "🌾 ऑफ़लाइन किसान मोड (Quick Login)"
+                                    AppLanguage.ENGLISH -> "🌾 Offline Farmer Mode (Quick Login)"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
@@ -355,9 +388,21 @@ fun AuthGateScreen(
                                 textAlign = TextAlign.Center
                             )
                         }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = when (currentLanguage) {
+                                AppLanguage.BENGALI -> "Quick Login শুধুমাত্র এই ডিভাইসে অফলাইন কাজের জন্য। ক্লাউড সিঙ্ক ও বিক্রেতা সুবিধার জন্য Google দিয়ে প্রবেশ করুন।"
+                                AppLanguage.HINDI -> "Quick Login केवल इस डिवाइस पर ऑफ़लाइन उपयोग के लिए है। क्लाउड सिंक और विक्रेता सुविधाओं के लिए Google से साइन इन करें।"
+                                AppLanguage.ENGLISH -> "Quick Login stays on this device only. Sign in with Google for cloud sync, backup, and seller tools."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AgriTextSecondary,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
+        }
         }
     }
 }
@@ -422,6 +467,10 @@ fun onGoogleSignInClicked(
                     )
                     return@launch
                 }
+
+                // Verify Firebase ID token before persisting session
+                user?.getIdToken(false)?.await()
+                UserSessionManager.recordTokenValidated(context)
 
                 val assignedRole = if (user?.email?.trim()?.equals(UserSessionManager.ADMIN_EMAIL, ignoreCase = true) == true) {
                     UserSession.ROLE_ADMIN

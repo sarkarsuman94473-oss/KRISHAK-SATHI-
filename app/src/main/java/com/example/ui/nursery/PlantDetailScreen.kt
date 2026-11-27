@@ -1,5 +1,9 @@
 package com.example.ui.nursery
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,36 +31,52 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Height
 import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material.icons.filled.RequestQuote
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,11 +87,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.datasource.BotanicalPhotoStage
 import com.example.data.datasource.PlantKingdomCatalog
+import com.example.data.datasource.PlantMediaRecord
+import com.example.data.datasource.PlantVarietyAndMediaCatalog
+import com.example.data.datasource.RegionalSuitabilityTag
+import com.example.data.local.session.UserSessionManager
 import com.example.data.model.AppLanguage
 import com.example.data.remote.NurseryApplicationRepository
 import com.example.data.remote.NurseryProductRepository
 import com.example.data.repository.PlantKingdomRepository
+import com.example.data.repository.TrustAndSafetyRepository
 import com.example.ui.theme.RoyalBorder
 import com.example.ui.theme.RoyalGold
 import com.example.ui.theme.RoyalGreenCardBg
@@ -84,6 +110,9 @@ import com.example.ui.theme.RoyalTextPrimary
 import com.example.ui.theme.RoyalTextSecondary
 import com.example.ui.theme.RoyalWarningBg
 import com.example.ui.theme.RoyalWarningText
+import com.example.util.L10n
+import com.example.util.safeStartActivity
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -101,6 +130,8 @@ fun PlantDetailScreen(
     val plantRepo = remember { PlantKingdomRepository(context) }
     val appRepo = remember { NurseryApplicationRepository(context) }
     val productRepo = remember { NurseryProductRepository(context) }
+    val trustRepo = remember { TrustAndSafetyRepository(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         plantRepo.ensureSeeded()
@@ -115,6 +146,33 @@ fun PlantDetailScreen(
             ?: PlantKingdomCatalog.getById(plantId)
             ?: PlantKingdomCatalog.allPlants.first()
     }
+
+    val stageGallery = remember(plant.plantId, allPlants) {
+        PlantVarietyAndMediaCatalog.getStageMediaGallery(context, plant)
+    }
+    var selectedStage by remember(plant.plantId) { mutableStateOf(BotanicalPhotoStage.YOUNG_SAPLING) }
+    val activeStageRecord = remember(stageGallery, selectedStage) {
+        stageGallery.firstOrNull { it.stage == selectedStage } ?: stageGallery.first()
+    }
+    var fullScreenRecord by remember { mutableStateOf<PlantMediaRecord?>(null) }
+
+    val varieties = remember(plant.plantId) {
+        PlantVarietyAndMediaCatalog.getVarietiesForPlant(plant.plantId)
+    }
+    var selectedVariety by remember(plant.plantId) { mutableStateOf(varieties.firstOrNull()) }
+    val regionTags = remember(plant) {
+        PlantVarietyAndMediaCatalog.inferRegionalSuitability(plant)
+    }
+
+    val favPrefs = remember(context) {
+        context.applicationContext.getSharedPreferences("krishak_fav_plants_v1", Context.MODE_PRIVATE)
+    }
+    var isFavourite by remember(plant.plantId) {
+        mutableStateOf(favPrefs.getBoolean("fav_${plant.plantId}", false))
+    }
+    var showReportDialog by remember { mutableStateOf(false) }
+    var reportDescription by remember { mutableStateOf("") }
+    var showInquiryDialog by remember { mutableStateOf(false) }
 
     val verifiedStockingNurseries = remember(unifiedNurseries, plant) {
         val explicitIds = plant.verifiedNurseryIdsCsv.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -195,13 +253,46 @@ fun PlantDetailScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PlantSpeciesArtwork(
+                            PlantStageMediaArtwork(
+                                record = activeStageRecord,
                                 plant = plant,
                                 lang = currentLanguage,
-                                showAccuracyBadge = true,
+                                onClick = { fullScreenRecord = activeStageRecord },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(210.dp)
+                                    .height(216.dp)
+                            )
+
+                            Text(
+                                text = L10n.t("plant_stages_title", currentLanguage),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RoyalSoftGold
+                            )
+
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                stageGallery.forEach { rec ->
+                                    val selected = rec.stage == selectedStage
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = { selectedStage = rec.stage },
+                                        modifier = Modifier.testTag("plant_stage_${rec.stage.code}"),
+                                        label = { Text(rec.stage.getDisplayName(currentLanguage), fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = RoyalGreenEmerald,
+                                            selectedLabelColor = RoyalSoftGold
+                                        )
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "${activeStageRecord.sourceName} • ${activeStageRecord.attribution}",
+                                fontSize = 11.sp,
+                                color = RoyalTextSecondary
                             )
 
                             FlowRow(
@@ -288,6 +379,164 @@ fun PlantDetailScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = RoyalTextPrimary
                             )
+                        }
+                    }
+                }
+
+                // Regional Climate Suitability Card
+                item {
+                    val isHillOnlyTemperate = !regionTags.contains(RegionalSuitabilityTag.NORTH_BENGAL_PLAINS) &&
+                        !regionTags.contains(RegionalSuitabilityTag.TERAI_DOOARS) &&
+                        (regionTags.contains(RegionalSuitabilityTag.TEMPERATE) ||
+                            regionTags.contains(RegionalSuitabilityTag.DARJEELING_KALIMPONG_HILLS))
+
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, RoyalBorder),
+                        colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("plant_regional_suitability_card")
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = L10n.t("plant_regional_suitability_title", currentLanguage),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = RoyalSoftGold
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                regionTags.forEach { tag ->
+                                    Surface(
+                                        color = RoyalGreenSecondaryBg,
+                                        border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.55f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = tag.getDisplayName(currentLanguage),
+                                            color = RoyalSoftGold,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (isHillOnlyTemperate) {
+                                Surface(
+                                    color = RoyalWarningBg,
+                                    border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.6f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Warning, contentDescription = null, tint = RoyalWarningText, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = when (currentLanguage) {
+                                                AppLanguage.BENGALI -> "উষ্ণ সমতল এলাকায় এই শীতল-জলবায়ুর গাছের ফলন হয় না; কেবল পাহাড়ি বা নিয়ন্ত্রিত পরিবেশেই উপযোগী।"
+                                                AppLanguage.HINDI -> "यह ठंडे पहाड़ी क्षेत्र की प्रजाति गर्म मैदानी इलाकों के लिए उपयुक्त नहीं है।"
+                                                AppLanguage.ENGLISH -> "Temperate / hill chill species — not recommended for warm open plains."
+                                            },
+                                            color = RoyalWarningText,
+                                            fontSize = 11.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Verified Cultivars & Varieties Card (when applicable)
+                if (varieties.isNotEmpty()) {
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.65f)),
+                            colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("plant_varieties_card")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = "${L10n.t("plant_varieties_title", currentLanguage)} (${varieties.size})",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RoyalSoftGold
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    varieties.forEach { v ->
+                                        val isSel = selectedVariety?.varietyId == v.varietyId
+                                        FilterChip(
+                                            selected = isSel,
+                                            onClick = { selectedVariety = v },
+                                            modifier = Modifier.testTag("plant_variety_chip_${v.varietyId}"),
+                                            label = { Text(v.getDisplayName(currentLanguage), fontSize = 11.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = RoyalGreenEmerald,
+                                                selectedLabelColor = RoyalSoftGold
+                                            )
+                                        )
+                                    }
+                                }
+
+                                selectedVariety?.let { activeVar ->
+                                    Surface(
+                                        color = RoyalGreenSecondaryBg,
+                                        border = BorderStroke(1.dp, RoyalBorder),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = activeVar.getDisplayName(currentLanguage),
+                                                fontWeight = FontWeight.Bold,
+                                                color = RoyalTextPrimary,
+                                                fontSize = 14.sp
+                                            )
+                                            Text(
+                                                text = activeVar.getSpecialty(currentLanguage),
+                                                color = RoyalTextSecondary,
+                                                fontSize = 12.sp
+                                            )
+                                            Text(
+                                                text = "${label(currentLanguage, "মৌসুম", "मौसम", "Season")}: ${activeVar.getSeason(currentLanguage)}",
+                                                color = RoyalSoftGold,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    color = RoyalWarningBg,
+                                    border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("plant_sapling_verification_disclaimer")
+                                ) {
+                                    Text(
+                                        text = PlantVarietyAndMediaCatalog.getSaplingVerificationDisclaimer(currentLanguage),
+                                        color = RoyalWarningText,
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -514,6 +763,139 @@ fun PlantDetailScreen(
                     }
                 }
 
+                // Functional Farmer Actions Bar
+                item {
+                    val primaryVerifiedNursery = verifiedStockingNurseries.firstOrNull { !it.phone.isNullOrBlank() }
+                        ?: verifiedStockingNurseries.firstOrNull()
+
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.6f)),
+                        colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("plant_action_bar_card")
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { showInquiryDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_inquiry_btn")
+                                ) {
+                                    Icon(Icons.Default.RequestQuote, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_inquiry", currentLanguage), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val phone = primaryVerifiedNursery?.phone?.trim().orEmpty()
+                                        if (phone.isNotBlank()) {
+                                            safeStartActivity(
+                                                context,
+                                                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
+                                                L10n.t("plant_info_unavailable", currentLanguage)
+                                            )
+                                        } else {
+                                            Toast.makeText(context, L10n.t("plant_info_unavailable", currentLanguage), Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    border = BorderStroke(1.dp, RoyalGold),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_call_btn")
+                                ) {
+                                    Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalSoftGold)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_call", currentLanguage), fontSize = 12.sp, color = RoyalSoftGold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val lat = primaryVerifiedNursery?.latitude
+                                        val lng = primaryVerifiedNursery?.longitude
+                                        if (lat != null && lng != null) {
+                                            val labelName = Uri.encode(primaryVerifiedNursery.getDisplayName(currentLanguage))
+                                            safeStartActivity(
+                                                context,
+                                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lng?q=$lat,$lng($labelName)")),
+                                                L10n.t("plant_info_unavailable", currentLanguage)
+                                            )
+                                        } else {
+                                            Toast.makeText(context, L10n.t("plant_info_unavailable", currentLanguage), Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    border = BorderStroke(1.dp, RoyalBorder),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_directions_btn")
+                                ) {
+                                    Icon(Icons.Default.Directions, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalTextPrimary)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_directions", currentLanguage), fontSize = 12.sp, color = RoyalTextPrimary)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val nextVal = !isFavourite
+                                        favPrefs.edit().putBoolean("fav_${plant.plantId}", nextVal).apply()
+                                        isFavourite = nextVal
+                                    },
+                                    border = BorderStroke(1.dp, if (isFavourite) RoyalGold else RoyalBorder),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_favourite_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (isFavourite) RoyalGold else RoyalTextPrimary
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_favourite", currentLanguage), fontSize = 12.sp, color = RoyalTextPrimary)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val shareText = "${plant.getDisplayName(currentLanguage)} (${plant.scientificName})\n${plant.getDisplayCareInstructions(currentLanguage)}"
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, shareText)
+                                        }
+                                        safeStartActivity(
+                                            context,
+                                            Intent.createChooser(shareIntent, L10n.t("plant_action_share", currentLanguage)),
+                                            L10n.t("plant_info_unavailable", currentLanguage)
+                                        )
+                                    },
+                                    border = BorderStroke(1.dp, RoyalBorder),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_share_btn")
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalTextPrimary)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_share", currentLanguage), fontSize = 12.sp, color = RoyalTextPrimary)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showReportDialog = true },
+                                    border = BorderStroke(1.dp, RoyalWarningText.copy(alpha = 0.6f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("plant_action_report_btn")
+                                ) {
+                                    Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalWarningText)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L10n.t("plant_action_report", currentLanguage), fontSize = 12.sp, color = RoyalWarningText)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Provenance & Source Transparency Card
                 item {
                     Card(
@@ -540,6 +922,104 @@ fun PlantDetailScreen(
                 item { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
+    }
+
+    fullScreenRecord?.let { rec ->
+        PlantFullScreenMediaDialog(
+            record = rec,
+            plant = plant,
+            lang = currentLanguage,
+            onDismiss = { fullScreenRecord = null }
+        )
+    }
+
+    if (showInquiryDialog) {
+        AlertDialog(
+            onDismissRequest = { showInquiryDialog = false },
+            containerColor = RoyalGreenCardBg,
+            titleContentColor = RoyalGold,
+            textContentColor = RoyalTextPrimary,
+            title = { Text(L10n.t("plant_action_contact", currentLanguage), fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = if (matchingPartnerProducts.isNotEmpty() || verifiedStockingNurseries.isNotEmpty()) {
+                        L10n.t("trust_fair_price_note", currentLanguage)
+                    } else {
+                        "${L10n.t("plant_info_unavailable", currentLanguage)} — ${L10n.t("trust_fair_price_note", currentLanguage)}"
+                    },
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showInquiryDialog = false
+                        onOpenMarketplace()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald)
+                ) {
+                    Text(L10n.t("plant_action_quote", currentLanguage))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInquiryDialog = false }) {
+                    Text(L10n.t("btn_close", currentLanguage), color = RoyalSoftGold)
+                }
+            }
+        )
+    }
+
+    if (showReportDialog) {
+        AlertDialog(
+            onDismissRequest = { showReportDialog = false },
+            containerColor = RoyalGreenCardBg,
+            titleContentColor = RoyalGold,
+            textContentColor = RoyalTextPrimary,
+            title = { Text(L10n.t("plant_action_report", currentLanguage), fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = reportDescription,
+                    onValueChange = { reportDescription = it },
+                    label = { Text(L10n.t("trust_report_fraud", currentLanguage)) },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val session = UserSessionManager.getSession(context)
+                        coroutineScope.launch {
+                            val res = trustRepo.submitFraudReport(
+                                targetType = "PLANT_CATALOG",
+                                targetId = plant.plantId,
+                                targetName = plant.nameEn,
+                                sellerUserId = "",
+                                reasonCode = "WRONG_IMAGE_OR_INFO",
+                                description = reportDescription.ifBlank { "Reported issue on ${plant.nameEn} catalog entry." },
+                                reporterUserId = session?.userId ?: "guest_reporter",
+                                reporterName = session?.userName ?: "Farmer"
+                            )
+                            Toast.makeText(
+                                context,
+                                if (res.isSuccess) L10n.t("grievance_submit_btn", currentLanguage) else L10n.t("plant_info_unavailable", currentLanguage),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            showReportDialog = false
+                            reportDescription = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald)
+                ) {
+                    Text(L10n.t("grievance_submit_btn", currentLanguage))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportDialog = false }) {
+                    Text(L10n.t("btn_close", currentLanguage), color = RoyalSoftGold)
+                }
+            }
+        )
     }
 }
 

@@ -120,4 +120,42 @@ object MachineryImageStorageManager {
             Result.failure(e)
         }
     }
+
+    suspend fun uploadNurseryProductPhoto(
+        context: Context,
+        sellerUserId: String,
+        uri: Uri
+    ): Result<UploadedEquipmentPhoto> {
+        val currentUser = try {
+            Firebase.auth.currentUser
+        } catch (_: Exception) {
+            null
+        }
+        if (currentUser == null || currentUser.uid.isBlank()) {
+            return Result.failure(IllegalStateException("Google Sign-In required before uploading nursery photos to cloud storage"))
+        }
+
+        val compressed = compressUriToJpeg(context, uri).getOrElse {
+            return Result.failure(it)
+        }
+
+        return try {
+            val cleanSellerId = sellerUserId.ifBlank { currentUser.uid }
+                .replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            val storagePath = "nursery_images/$cleanSellerId/${UUID.randomUUID()}.jpg"
+            val ref = Firebase.storage.reference.child(storagePath)
+            ref.putBytes(compressed).await()
+            val url = ref.downloadUrl.await().toString()
+            Result.success(
+                UploadedEquipmentPhoto(
+                    storagePath = storagePath,
+                    downloadUrl = url,
+                    byteSize = compressed.size
+                )
+            )
+        } catch (e: Exception) {
+            Log.w("MachineryStorage", "Nursery Firebase Storage upload failed: ${e.message}")
+            Result.failure(e)
+        }
+    }
 }

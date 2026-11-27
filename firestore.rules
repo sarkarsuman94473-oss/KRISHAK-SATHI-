@@ -1423,6 +1423,160 @@ service cloud.firestore {
                        !('id' in incoming());
       allow update, delete: if false;
     }
+
+    // -------------------------------------------------------------------------
+    // Single-App Multi-Role Marketplace: Role Memberships & Partner Registrations
+    // -------------------------------------------------------------------------
+    function isValidUserRoleMembership(data) {
+      return isValidId(data.userId) &&
+             data.approvedRoles is list &&
+             data.approvedRoles.size() >= 1 &&
+             data.approvedRoles.size() <= 7 &&
+             !('ADMINISTRATOR' in data.approvedRoles) &&
+             !('ADMIN' in data.approvedRoles) &&
+             data.platformVerified is bool &&
+             data.verifiedBusinessName is string && data.verifiedBusinessName.size() <= 160 &&
+             data.activeDashboardMode in ['FARMER_DASHBOARD', 'PARTNER_DASHBOARD'] &&
+             data.updatedByAdminEmail is string && data.updatedByAdminEmail.size() <= 150 &&
+             !('id' in data);
+    }
+
+    match /user_roles/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isOwner(userId) || isAdmin();
+      allow create, update: if isAdmin() &&
+                               isValidId(userId) &&
+                               incoming().userId == userId &&
+                               isValidUserRoleMembership(incoming()) &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt);
+      allow delete: if isAdmin();
+    }
+
+    function isValidPartnerRegistration(data) {
+      return isValidId(data.userId) &&
+             data.applicantName is string && data.applicantName.size() > 0 && data.applicantName.size() <= 120 &&
+             data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 160 &&
+             data.contactPhone is string && data.contactPhone.size() >= 6 && data.contactPhone.size() <= 30 &&
+             data.whatsappPhone is string && data.whatsappPhone.size() <= 30 &&
+             data.contactEmail is string && data.contactEmail.size() <= 150 &&
+             data.businessLocation is string && data.businessLocation.size() >= 2 && data.businessLocation.size() <= 300 &&
+             data.district is string && data.district.size() <= 100 &&
+             data.state is string && data.state.size() <= 100 &&
+             data.pinCode is string && data.pinCode.size() <= 16 &&
+             data.serviceCategories is list && data.serviceCategories.size() >= 1 && data.serviceCategories.size() <= 5 &&
+             !('ADMINISTRATOR' in data.serviceCategories) &&
+             !('ADMIN' in data.serviceCategories) &&
+             data.serviceArea is string && data.serviceArea.size() >= 2 && data.serviceArea.size() <= 200 &&
+             data.serviceRadiusKm is int && data.serviceRadiusKm >= 1 && data.serviceRadiusKm <= 500 &&
+             data.documentType is string && data.documentType.size() <= 80 &&
+             data.licenseNumber is string && data.licenseNumber.size() <= 120 &&
+             data.gstNumber is string && data.gstNumber.size() <= 60 &&
+             data.documentNotes is string && data.documentNotes.size() <= 600 &&
+             data.verificationDocumentNames is list && data.verificationDocumentNames.size() <= 5 &&
+             data.status in ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'] &&
+             data.platformVerified is bool &&
+             data.approvedRoles is list && data.approvedRoles.size() <= 5 &&
+             !('ADMINISTRATOR' in data.approvedRoles) &&
+             !('ADMIN' in data.approvedRoles) &&
+             data.adminNotes is string && data.adminNotes.size() <= 600 &&
+             data.rejectionReason is string && data.rejectionReason.size() <= 600 &&
+             data.reviewedByAdminEmail is string && data.reviewedByAdminEmail.size() <= 150 &&
+             data.submittedAtMillis is int &&
+             data.reviewedAtMillis is int &&
+             !('id' in data);
+    }
+
+    match /partner_registrations/{registrationId} {
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.status == 'APPROVED' ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.status == 'APPROVED' ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(registrationId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().platformVerified == false &&
+                       incoming().approvedRoles.size() == 0 &&
+                       incoming().createdAt is timestamp && isValidTimestamp(incoming().createdAt) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidPartnerRegistration(incoming());
+      allow update: if isSignedIn() &&
+                       isValidPartnerRegistration(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       (
+                         isAdmin() ||
+                         (
+                           existing().userId == request.auth.uid &&
+                           incoming().status == 'PENDING' &&
+                           incoming().platformVerified == false &&
+                           incoming().approvedRoles.size() == 0
+                         )
+                       );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Krishi Shiksha — Video Learning Centre & Farmer Watch Progress
+    // -------------------------------------------------------------------------
+    function isValidVideoLesson(data) {
+      return data.lessonNumber is int && data.lessonNumber >= 1 &&
+             data.categoryCode is string && data.categoryCode.size() >= 2 && data.categoryCode.size() <= 60 &&
+             data.stageCode is string && data.stageCode.size() >= 2 && data.stageCode.size() <= 40 &&
+             data.titleBn is string && data.titleBn.size() <= 200 &&
+             data.titleHi is string && data.titleHi.size() <= 200 &&
+             data.titleEn is string && data.titleEn.size() <= 200 &&
+             data.publicationStatus in ['DRAFT', 'UNDER_EXPERT_REVIEW', 'PUBLISHED', 'UNPUBLISHED'] &&
+             data.isReviewedByExpert is bool &&
+             data.durationSeconds is int && data.durationSeconds >= 10 && data.durationSeconds <= 7200 &&
+             (!('videoUrl' in data) || data.videoUrl == '' || isValidHttpsUrl(data.videoUrl)) &&
+             (!('thumbnailUrl' in data) || data.thumbnailUrl == '' || isValidHttpsUrl(data.thumbnailUrl)) &&
+             !('id' in data);
+    }
+
+    match /video_lessons/{lessonId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.publicationStatus == 'PUBLISHED' ||
+        isAdmin()
+      );
+      allow create: if isAdmin() &&
+                       isValidId(lessonId) &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidVideoLesson(incoming());
+      allow update: if isAdmin() &&
+                       incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                       isValidVideoLesson(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidFarmerVideoProgress(data) {
+      return isValidId(data.userId) &&
+             data.userId == request.auth.uid &&
+             isValidId(data.lessonId) &&
+             data.lastPositionSeconds is int && data.lastPositionSeconds >= 0 &&
+             data.totalDurationSeconds is int && data.totalDurationSeconds >= 1 &&
+             data.completed is bool &&
+             data.isFavorite is bool &&
+             data.lastWatchedLanguage in ['bn', 'hi', 'en'] &&
+             data.updatedAtMillis is int &&
+             !('id' in data);
+    }
+
+    match /farmer_video_progress/{progressId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() &&
+                               isValidId(progressId) &&
+                               incoming().userId == request.auth.uid &&
+                               incoming().updatedAt is timestamp && isValidTimestamp(incoming().updatedAt) &&
+                               isValidFarmerVideoProgress(incoming());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
   }
 }
 

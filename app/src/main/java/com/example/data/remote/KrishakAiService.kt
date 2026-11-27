@@ -39,6 +39,7 @@ class KrishakAiService(
         attachedBitmap: Bitmap? = null,
         language: AppLanguage,
         allowCropMismatchPrompt: Boolean = true,
+        extraGroundingContext: String? = null,
         onStreamChunk: ((String) -> Unit)? = null
     ): KrishakAiResponseBundle {
         val selectedCrop = CropContextResolver.resolveByCropIdOrName(selectedCropIdOrName)
@@ -148,6 +149,9 @@ class KrishakAiService(
             }
             if (machineryBlock.isNotBlank()) {
                 append(machineryBlock)
+            }
+            if (!extraGroundingContext.isNullOrBlank()) {
+                append("\n").append(extraGroundingContext).append("\n")
             }
         }
 

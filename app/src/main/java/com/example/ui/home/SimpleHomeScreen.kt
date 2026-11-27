@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -63,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -72,15 +74,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.datasource.CropMasterDatabase
+import com.example.data.local.session.UserSessionManager
 import com.example.data.model.AppLanguage
 import com.example.data.model.MasterCrop
+import com.example.data.remote.FirestoreRepository
 import com.example.data.repository.ExpertRepository
+import com.example.ui.components.NetworkDetailsDialog
+import com.example.ui.components.NetworkStatusPill
+import com.example.ui.components.OfflineModeBanner
 import com.example.ui.crops.CropThumbnailVisual
 import com.example.ui.footer.AppFooter
 import com.example.ui.info.LegalTab
 import com.example.ui.theme.EarthCardBorder
 import com.example.ui.theme.EarthInkPrimary
-import com.example.ui.theme.EarthInkSecondary
 import com.example.ui.theme.EarthSurfaceWhite
 import com.example.ui.theme.RoyalBorder
 import com.example.ui.theme.RoyalGold
@@ -89,13 +95,16 @@ import com.example.ui.theme.RoyalGreenEmerald
 import com.example.ui.theme.RoyalGreenHighlight
 import com.example.ui.theme.RoyalGreenPrimaryBg
 import com.example.ui.theme.RoyalGreenSecondaryBg
+import com.example.ui.theme.RoyalMidnightBg
 import com.example.ui.theme.RoyalSoftGold
+import com.example.ui.theme.RoyalSuccessBg
+import com.example.ui.theme.RoyalSuccessText
 import com.example.ui.theme.RoyalTextPrimary
 import com.example.ui.theme.RoyalTextSecondary
 import com.example.ui.theme.royalOutlinedTextFieldColors
 import com.example.util.L10n
-import com.example.util.isCompactNarrowScreen
-import com.example.util.isExpandedScreen
+import com.example.util.NetworkConnectivityMonitor
+import com.example.util.NetworkStatusSnapshot
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -115,14 +124,28 @@ fun SimpleHomeScreen(
     onNavigateExperts: () -> Unit = {},
     onNavigateFaq: () -> Unit = {},
     onNavigateLeadingFarmers: () -> Unit = {},
-    onLanguageChange: (AppLanguage) -> Unit = {}
+    onLanguageChange: (AppLanguage) -> Unit = {},
+    userId: String = "",
+    networkStatus: NetworkStatusSnapshot = NetworkConnectivityMonitor.status.collectAsState().value,
+    isCloudConnected: Boolean = true,
+    onConnectGoogleSync: () -> Unit = {},
+    onAddCropClick: () -> Unit = { onCardClick("crops") },
+    onOpenPlantKingdom: () -> Unit = { onCardClick("nursery") },
+    onOpenPartnerDashboard: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val expertRepository = remember { ExpertRepository(context) }
+    val firestoreRepo = remember { FirestoreRepository(context) }
+    val effectiveUserId = remember(userId, context) {
+        userId.ifBlank { UserSessionManager.getSession(context)?.userId ?: "guest" }
+    }
     LaunchedEffect(expertRepository) {
         expertRepository.seedInitialExpertsIfEmpty()
     }
     val verifiedExperts by expertRepository.verifiedExperts.collectAsState(initial = emptyList())
+    val farmerCrops by remember(firestoreRepo, effectiveUserId) {
+        firestoreRepo.observeFarmerCrops(effectiveUserId)
+    }.collectAsState(initial = emptyList())
 
     val popularCrops = remember {
         listOf("tomato", "potato", "rice_paddy", "tea", "rose", "mango")
@@ -131,11 +154,7 @@ fun SimpleHomeScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var showNotificationsDialog by remember { mutableStateOf(false) }
-
-    val isNarrow = isCompactNarrowScreen()
-    val isExpanded = isExpandedScreen()
-    val columns = if (isExpanded) 3 else 2
-    val horizontalPad = if (isNarrow) 12.dp else 16.dp
+    var showNetworkDialog by remember { mutableStateOf(false) }
 
     val normalizedQuery = searchQuery.trim()
     val filteredSections = remember(normalizedQuery, language) {
@@ -164,41 +183,90 @@ fun SimpleHomeScreen(
         }
     }
 
+    val dashboardBackgroundColor = if (isDarkTheme) RoyalMidnightBg else Color(0xFF10291F)
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = dashboardBackgroundColor
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            LazyColumn(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(id = R.drawable.bg_sunrise_golden_paddy),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .widthIn(max = 940.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .testTag("home_sunrise_background")
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = if (isDarkTheme) {
+                                listOf(
+                                    Color(0xCC031A12),
+                                    Color(0xDC031B13),
+                                    Color(0xED02130D)
+                                )
+                            } else {
+                                listOf(
+                                    Color(0x9E0B291D),
+                                    Color(0xBD0D2B1F),
+                                    Color(0xDE062016)
+                                )
+                            }
+                        )
+                    )
+            )
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
             ) {
-                // 1. Original Royal Green Header (Logo, Greeting, Quick Actions, Language Pills, Search, Weather & Voice)
-                item {
-                    Surface(
-                        color = RoyalGreenSecondaryBg,
-                        border = BorderStroke(1.dp, RoyalBorder),
-                        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("home_royal_header")
-                    ) {
-                        Column(
+                val availableWidth = maxWidth.coerceAtMost(940.dp)
+                val isNarrow = availableWidth < 360.dp
+                val columns = when {
+                    availableWidth >= 600.dp -> 4
+                    availableWidth >= 310.dp -> 3
+                    else -> 2
+                }
+                val horizontalPad = if (isNarrow) 12.dp else 16.dp
+                val gridIconSize = when {
+                    availableWidth >= 600.dp -> 80.dp
+                    availableWidth < 340.dp -> 68.dp
+                    else -> 74.dp
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 940.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 1. Original Royal Green Header (Logo, Greeting, Quick Actions, Language Pills, Search, Weather & Voice)
+                    item {
+                        Surface(
+                            color = RoyalGreenSecondaryBg.copy(alpha = 0.88f),
+                            border = BorderStroke(1.dp, RoyalBorder),
+                            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(RoyalGreenSecondaryBg, RoyalGreenPrimaryBg)
-                                    )
-                                )
-                                .padding(horizontal = horizontalPad, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                .testTag("home_royal_header")
                         ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                RoyalGreenSecondaryBg.copy(alpha = 0.86f),
+                                                RoyalGreenPrimaryBg.copy(alpha = 0.90f)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = horizontalPad, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -317,6 +385,77 @@ fun SimpleHomeScreen(
                                 }
                             }
 
+                            // Live Connectivity Status Pill + Cloud Mode Summary
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                NetworkStatusPill(
+                                    snapshot = networkStatus,
+                                    language = language,
+                                    onClick = { showNetworkDialog = true }
+                                )
+                                Surface(
+                                    color = if (isCloudConnected) RoyalSuccessBg else RoyalGreenCardBg,
+                                    border = BorderStroke(1.dp, RoyalBorder),
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier.clickable { showNetworkDialog = true }
+                                ) {
+                                    Text(
+                                        text = if (isCloudConnected) {
+                                            "☁ " + L10n.t("cloud_sync_connected_desc", language)
+                                        } else {
+                                            "📱 Quick Login"
+                                        },
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isCloudConnected) RoyalSuccessText else RoyalSoftGold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+
+                            if (UserSessionManager.hasApprovedPartnerRole(context)) {
+                                Surface(
+                                    color = RoyalGreenEmerald,
+                                    border = BorderStroke(1.dp, RoyalGold),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .clickable { onOpenPartnerDashboard() }
+                                        .testTag("home_switch_partner_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = when (language) {
+                                                AppLanguage.BENGALI -> "পার্টনার ড্যাশবোর্ডে যান (Verified Partner)"
+                                                AppLanguage.HINDI -> "पार्टनर डैशबोर्ड पर जाएँ (Verified Partner)"
+                                                AppLanguage.ENGLISH -> "Switch to Partner Dashboard (Verified)"
+                                            },
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            tint = RoyalSoftGold,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+
                             // Language Switcher Quick Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -421,15 +560,12 @@ fun SimpleHomeScreen(
                                             .padding(horizontal = 10.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .background(RoyalGreenEmerald.copy(alpha = 0.35f), CircleShape)
-                                                .border(1.dp, RoyalGold.copy(alpha = 0.55f), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(text = "🌦", fontSize = 20.sp)
-                                        }
+                                        Image(
+                                            painter = painterResource(id = R.drawable.dash_ico_weather_strip),
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.size(40.dp)
+                                        )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
@@ -513,8 +649,216 @@ fun SimpleHomeScreen(
                     }
                 }
 
-                // 2. Promo Banner Carousel (hidden only during search)
+                // Offline Mode Banner when connectivity drops
+                if (!networkStatus.isOnline) {
+                    item {
+                        OfflineModeBanner(
+                            language = language,
+                            onRetryCheck = { NetworkConnectivityMonitor.refreshNow(context) },
+                            modifier = Modifier.padding(horizontal = horizontalPad)
+                        )
+                    }
+                }
+
+                // 2. Royal Green Luxury Agricultural Hero & Promo Carousel (hidden during search)
                 if (normalizedQuery.isBlank()) {
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.65f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = horizontalPad, vertical = 2.dp)
+                                .clickable { onOpenPlantKingdom() }
+                                .testTag("home_luxury_hero_banner")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(172.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.img_royal_agri_hero_1795520197823),
+                                    contentDescription = "KRISHAK SATHI Hero",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                colors = listOf(
+                                                    Color(0xE6042A1D),
+                                                    Color(0x99064E3B),
+                                                    Color(0x33064E3B)
+                                                )
+                                            )
+                                        )
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Surface(
+                                        color = RoyalGold.copy(alpha = 0.22f),
+                                        border = BorderStroke(1.dp, RoyalGold),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "KRISHAK SATHI",
+                                            color = RoyalSoftGold,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 1.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = L10n.t("home_hero_tagline", language),
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 18.sp,
+                                            lineHeight = 23.sp,
+                                            maxLines = 2
+                                        )
+                                        Surface(
+                                            color = RoyalGreenEmerald,
+                                            border = BorderStroke(1.dp, RoyalGold),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = L10n.t("home_hero_cta", language),
+                                                    color = RoyalSoftGold,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                                    contentDescription = null,
+                                                    tint = RoyalSoftGold,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Real Farmer My Crops Summary Card (backed by FirestoreRepository local + cloud sync)
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            border = BorderStroke(1.dp, RoyalBorder),
+                            colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = horizontalPad)
+                                .testTag("home_my_crops_summary_card")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = L10n.t("home_my_crops_summary_title", language),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = RoyalSoftGold
+                                    )
+                                    Surface(
+                                        color = RoyalGreenSecondaryBg,
+                                        border = BorderStroke(1.dp, RoyalBorder),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "${farmerCrops.size}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = RoyalGold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                if (farmerCrops.isEmpty()) {
+                                    Text(
+                                        text = L10n.t("home_my_crops_empty", language),
+                                        fontSize = 12.sp,
+                                        color = RoyalTextSecondary
+                                    )
+                                } else {
+                                    Text(
+                                        text = L10n.format("home_my_crops_count", language, farmerCrops.size),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = RoyalTextPrimary
+                                    )
+                                    val previewNames = farmerCrops.take(3).joinToString(" • ") { fc ->
+                                        if (fc.variety.isNotBlank()) "${fc.cropName} (${fc.variety})" else fc.cropName
+                                    }
+                                    if (previewNames.isNotBlank()) {
+                                        Text(
+                                            text = previewNames,
+                                            fontSize = 11.5.sp,
+                                            color = RoyalSoftGold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { onCardClick("crops") },
+                                        colors = ButtonDefaults.buttonColors(containerColor = RoyalGreenEmerald),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                                    ) {
+                                        Text(
+                                            text = L10n.t("home_my_crops_open_btn", language),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Button(
+                                        onClick = onAddCropClick,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = RoyalGold,
+                                            contentColor = RoyalGreenSecondaryBg
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                                    ) {
+                                        Text(
+                                            text = L10n.t("home_my_crops_add_btn", language),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         PromoBannerCarousel(
                             currentLanguage = language,
@@ -582,7 +926,8 @@ fun SimpleHomeScreen(
                             horizontalPad = horizontalPad,
                             isWarmSurface = section.isWarmSurface,
                             isDarkTheme = isDarkTheme,
-                            onCardClick = onCardClick
+                            onCardClick = onCardClick,
+                            iconSize = gridIconSize
                         )
                     }
                 }
@@ -609,7 +954,8 @@ fun SimpleHomeScreen(
                             horizontalPad = horizontalPad,
                             isWarmSurface = false,
                             isDarkTheme = isDarkTheme,
-                            onCardClick = onCardClick
+                            onCardClick = onCardClick,
+                            iconSize = gridIconSize
                         )
                     }
                 }
@@ -950,6 +1296,42 @@ fun SimpleHomeScreen(
                     }
                 }
 
+                // Fair Price & Anti-Fraud Protection Strip
+                item {
+                    Surface(
+                        color = RoyalGreenSecondaryBg,
+                        border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.55f)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = horizontalPad)
+                            .clickable { onNavigateLegal(LegalTab.GRIEVANCE_REDRESSAL) }
+                            .testTag("home_fair_price_strip")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "🛡 " + L10n.t("home_fair_price_strip", language),
+                                color = RoyalSoftGold,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = RoyalGold,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
                 // 11. Corporate Footer
                 item {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -965,7 +1347,19 @@ fun SimpleHomeScreen(
                     )
                 }
             }
+            }
         }
+    }
+
+    if (showNetworkDialog) {
+        NetworkDetailsDialog(
+            snapshot = networkStatus,
+            isCloudSignedIn = isCloudConnected,
+            language = language,
+            onConnectGoogle = onConnectGoogleSync,
+            onRefreshNetwork = { NetworkConnectivityMonitor.refreshNow(context) },
+            onDismiss = { showNetworkDialog = false }
+        )
     }
 
     if (showNotificationsDialog) {
@@ -1062,27 +1456,27 @@ private fun SectionHeadingRow(
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.5.sp,
                 lineHeight = 21.sp,
-                color = RoyalTextPrimary
+                color = Color.White
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp,
-                    color = RoyalTextSecondary,
+                    color = Color(0xFFC5D8C4),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
         Surface(
-            color = if (isGold) RoyalGold.copy(alpha = 0.2f) else RoyalGreenCardBg,
-            border = BorderStroke(1.dp, if (isGold) RoyalGold else RoyalBorder),
+            color = if (isGold) Color(0xFFD4AF37).copy(alpha = 0.2f) else Color(0xFF064E3B),
+            border = BorderStroke(1.dp, if (isGold) Color(0xFFD4AF37) else Color(0xFF15803D).copy(alpha = 0.7f)),
             shape = RoundedCornerShape(8.dp)
         ) {
             Text(
                 text = badgeText,
-                color = if (isGold) RoyalSoftGold else RoyalGreenHighlight,
+                color = if (isGold) RoyalSoftGold else Color(0xFFC5D8C4),
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)

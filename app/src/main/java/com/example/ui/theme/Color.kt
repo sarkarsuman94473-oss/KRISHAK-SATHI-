@@ -20,6 +20,13 @@ val RoyalTextSecondary = Color(0xFFC4D5CA)     // Secondary Text (#C4D5CA)
 val RoyalBorder = Color(0xFF286348)            // Borders & Dividers (#286348)
 val RoyalInputBg = Color(0xFF123F30)           // Input Field Background (#123F30)
 
+// Royal Green Luxury Extended Tokens
+val RoyalDeepGreen = Color(0xFF064E3B)         // Deep Royal Emerald Header / Banner
+val RoyalEmeraldLuxury = Color(0xFF15803D)     // Fresh Leaf Emerald Accent
+val RoyalGoldLuxury = Color(0xFFD4AF37)        // Metallic Gold Highlight
+val RoyalNaturalWhite = Color(0xFFFAFAF5)      // Warm Ivory Surface
+val RoyalLightGreenTint = Color(0xFFE9F5E5)    // Soft Leaf Tint Surface
+
 // High-Contrast Midnight Emerald Variant (Optional Theme Toggle)
 val RoyalMidnightBg = Color(0xFF031B13)
 val RoyalMidnightSecondary = Color(0xFF06291D)

@@ -142,7 +142,9 @@ fun KrishakAiScreen(
     onBack: () -> Unit,
     userId: String = LocalContext.current.let { UserSessionManager.getSession(it)?.userId ?: "guest" },
     aiService: KrishakAiService? = null,
-    onOpenExperts: () -> Unit = {}
+    onOpenExperts: () -> Unit = {},
+    initialExtraContext: String? = null,
+    initialPromptSeed: String? = null
 ) {
     val context = LocalContext.current
     val resolvedService = remember(context, aiService) { aiService ?: KrishakAiService(context) }
@@ -178,7 +180,7 @@ fun KrishakAiScreen(
     }
     val persistedMessages by messagesFlow.collectAsState(initial = emptyList())
 
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember(initialPromptSeed) { mutableStateOf(initialPromptSeed.orEmpty()) }
     var isGenerating by remember { mutableStateOf(false) }
     var streamingText by remember { mutableStateOf("") }
     var activeGenerationJob by remember { mutableStateOf<Job?>(null) }
@@ -490,6 +492,7 @@ fun KrishakAiScreen(
                     attachedBitmap = bitmapToSend,
                     language = currentLanguage,
                     allowCropMismatchPrompt = false,
+                    extraGroundingContext = initialExtraContext,
                     onStreamChunk = { partial -> streamingText = partial }
                 )
 

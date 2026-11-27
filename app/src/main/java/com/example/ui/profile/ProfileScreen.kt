@@ -28,6 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
@@ -62,10 +64,15 @@ import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import com.example.data.local.session.UserSessionManager
 import com.example.data.model.AppLanguage
+import com.example.data.model.AppUserRole
+import com.example.data.model.DashboardMode
 import com.example.data.model.FarmerProfile
 import com.example.data.model.NurseryApplicationStatus
+import com.example.data.model.PartnerRegistrationStatus
 import com.example.data.remote.FirestoreRepository
 import com.example.data.remote.NurseryApplicationRepository
+import com.example.data.remote.PartnerRoleRepository
+import com.example.ui.auth.onGoogleSignInClicked
 import com.example.ui.auth.signOutFarmer
 import com.example.ui.theme.AgriAlertRed
 import com.example.ui.theme.AgriGreenPrimary
@@ -81,12 +88,17 @@ import android.content.Intent
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import com.example.data.repository.TrustAndSafetyRepository
+import com.example.util.NetworkConnectivityMonitor
 import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
@@ -107,7 +119,10 @@ fun ProfileScreen(
     onOpenSellerDashboard: () -> Unit = {},
     onOpenAdminNurseryManagement: () -> Unit = {},
     onOpenAdminTrustModeration: () -> Unit = {},
-    onOpenGrievanceRedressal: () -> Unit = {}
+    onOpenGrievanceRedressal: () -> Unit = {},
+    onCloudSessionUpdated: () -> Unit = {},
+    onOpenPartnerRegistration: () -> Unit = {},
+    onSwitchDashboardMode: (DashboardMode) -> Unit = {}
 ) {
     val context = LocalContext.current
     val repository = remember { FirestoreRepository(context) }
@@ -115,50 +130,32 @@ fun ProfileScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val profile by repository.observeProfile(userId).collectAsState(initial = null)
+    val currentSession = remember(userId) { UserSessionManager.getSession(context) }
 
-    var name by remember(profile, currentLanguage) {
+    var name by remember(profile, userId) {
         mutableStateOf(
-            profile?.name ?: when (currentLanguage) {
-                AppLanguage.BENGALI -> "সুমন সরকার"
-                AppLanguage.HINDI -> "सुमन सरकार"
-                AppLanguage.ENGLISH -> "Suman Sarkar"
-            }
+            profile?.name?.takeIf { it.isNotBlank() }
+                ?: currentSession?.userName?.takeIf { it.isNotBlank() }
+                ?: ""
         )
     }
-    var mobile by remember(profile) { mutableStateOf(profile?.mobileNumber ?: "") }
-    var village by remember(profile, currentLanguage) {
-        mutableStateOf(
-            profile?.village ?: when (currentLanguage) {
-                AppLanguage.BENGALI -> "শান্তিপুর / ধূপগুড়ি"
-                AppLanguage.HINDI -> "शांतिपुर / धूपगुड़ी"
-                AppLanguage.ENGLISH -> "Shantipur / Dhupguri"
-            }
-        )
+    var mobile by remember(profile, userId) {
+        mutableStateOf(profile?.mobileNumber?.takeIf { it.isNotBlank() } ?: currentSession?.phone.orEmpty())
     }
-    var district by remember(profile, currentLanguage) {
-        mutableStateOf(
-            profile?.district ?: when (currentLanguage) {
-                AppLanguage.BENGALI -> "জলপাইগুড়ি"
-                AppLanguage.HINDI -> "जलपाईगुड़ी"
-                AppLanguage.ENGLISH -> "Jalpaiguri"
-            }
-        )
+    var village by remember(profile, userId) { mutableStateOf(profile?.village.orEmpty()) }
+    var district by remember(profile, userId) { mutableStateOf(profile?.district.orEmpty()) }
+    var state by remember(profile, userId) { mutableStateOf(profile?.state.orEmpty()) }
+    var farmSize by remember(profile, userId) {
+        mutableStateOf(profile?.farmSize?.takeIf { it > 0.0 }?.toString().orEmpty())
     }
-    var state by remember(profile, currentLanguage) {
-        mutableStateOf(
-            profile?.state ?: when (currentLanguage) {
-                AppLanguage.BENGALI -> "পশ্চিমবঙ্গ"
-                AppLanguage.HINDI -> "पश्चिम बंगाल"
-                AppLanguage.ENGLISH -> "West Bengal"
-            }
-        )
-    }
-    var farmSize by remember(profile) { mutableStateOf((profile?.farmSize ?: 4.0).toString()) }
 
     var savedFeedback by remember { mutableStateOf(false) }
+    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var deleteAccountError by remember { mutableStateOf<String?>(null) }
+    var requiresRecentLoginForDelete by remember { mutableStateOf(false) }
     var isDeletingAccount by remember { mutableStateOf(false) }
     val isNarrow = isCompactNarrowScreen()
     val trustRepo = remember { TrustAndSafetyRepository(context) }
@@ -212,6 +209,84 @@ fun ProfileScreen(
                     .widthIn(max = 720.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+            // Cloud Sync & Account Mode Card
+            val isQuickLogin = UserSessionManager.isLocalQuickLogin(context)
+            val hasCloudSync = UserSessionManager.hasCloudFirebaseSession(context)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_account_sync_card")
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (hasCloudSync) Icons.Default.CloudDone else Icons.Default.CloudSync,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = L10n.t("net_dialog_title", currentLanguage),
+                            fontWeight = FontWeight.Bold,
+                            color = AgriTextPrimary
+                        )
+                    }
+                    Text(
+                        text = if (hasCloudSync) {
+                            L10n.t("cloud_sync_connected_desc", currentLanguage)
+                        } else {
+                            L10n.t("cloud_sync_quick_login_desc", currentLanguage)
+                        },
+                        fontSize = 13.sp,
+                        color = AgriTextSecondary
+                    )
+                    if (isQuickLogin || !hasCloudSync) {
+                        Button(
+                            onClick = {
+                                onGoogleSignInClicked(
+                                    context = context,
+                                    credentialManager = credentialManager,
+                                    onAuthSuccess = {
+                                        onCloudSessionUpdated()
+                                        Toast.makeText(
+                                            context,
+                                            L10n.t("cloud_sync_connected_desc", currentLanguage),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    onAuthError = { err ->
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    },
+                                    scope = coroutineScope,
+                                    currentLanguage = currentLanguage
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("profile_connect_google_btn"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AgriGreenPrimary,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.CloudSync, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = L10n.t("cloud_connect_google_btn", currentLanguage),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             // Language Selection Card
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -387,10 +462,37 @@ fun ProfileScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                    if (!saveErrorMessage.isNullOrBlank()) {
+                        Text(
+                            text = saveErrorMessage ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("profile_save_error_text")
+                        )
+                    }
 
                     Button(
                         onClick = {
                             if (isSaving) return@Button
+                            savedFeedback = false
+                            saveErrorMessage = null
+                            if (!UserSessionManager.hasCloudFirebaseSession(context) || Firebase.auth.currentUser == null) {
+                                val msg = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "ক্লাউড সিঙ্ক করতে Google লগইন প্রয়োজন"
+                                    AppLanguage.HINDI -> "क्लाउड सिंक के लिए Google लॉगिन आवश्यक है"
+                                    AppLanguage.ENGLISH -> "Sign in with Google to save & sync your profile to cloud."
+                                }
+                                saveErrorMessage = msg
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (!NetworkConnectivityMonitor.isCurrentlyOnline()) {
+                                val msg = L10n.t("net_offline_banner_desc", currentLanguage)
+                                saveErrorMessage = msg
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
                             isSaving = true
                             coroutineScope.launch {
                                 try {
@@ -410,13 +512,14 @@ fun ProfileScreen(
                                     savedFeedback = true
                                 } catch (e: CancellationException) {
                                     throw e
-                                } catch (_: Exception) {
+                                } catch (e: Exception) {
                                     val msg = when (currentLanguage) {
-                                        AppLanguage.BENGALI -> "ক্লাউড সিঙ্ক করতে Google লগইন প্রয়োজন"
-                                        AppLanguage.HINDI -> "क्लाउड सिंक के लिए Google लॉगिन आवश्यक है"
-                                        AppLanguage.ENGLISH -> "Sign in with Google to sync profile to cloud"
+                                        AppLanguage.BENGALI -> "প্রোফাইল সংরক্ষণ ব্যর্থ হয়েছে: ${e.localizedMessage ?: "পুনরায় চেষ্টা করুন"}"
+                                        AppLanguage.HINDI -> "प्रोफ़ाइल सहेजना विफल रहा: ${e.localizedMessage ?: "पुनः प्रयास करें"}"
+                                        AppLanguage.ENGLISH -> "Failed to save profile: ${e.localizedMessage ?: "Please retry"}"
                                     }
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    saveErrorMessage = msg
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 } finally {
                                     isSaving = false
                                 }
@@ -440,12 +543,228 @@ fun ProfileScreen(
                 }
             }
 
+            // Multi-Role Partner Hub & Dashboard Switching Card
+            val partnerRepo = remember { PartnerRoleRepository(context) }
+            val partnerReg by partnerRepo.observeUserRegistration(userId).collectAsState(initial = null)
+            val partnerMembership by partnerRepo.observeUserRoleMembership(userId).collectAsState(initial = null)
+            val approvedPartnerRoles = remember(currentSession, partnerMembership, partnerReg) {
+                val fromSession = UserSessionManager.getApprovedRoles(context)
+                val fromRepo = partnerMembership?.resolvedRoles(includeAdmin = false).orEmpty()
+                val fromReg = partnerReg?.resolvedApprovedPartnerRoles().orEmpty()
+                (fromSession + fromRepo + fromReg).filter { it.isPartnerRole }.distinct()
+            }
+            val hasPartnerDashboardAccess = approvedPartnerRoles.isNotEmpty() || UserSessionManager.hasApprovedPartnerRole(context)
+            val isVerifiedPartner = (partnerReg?.isVerifiedPartner() == true) ||
+                (partnerMembership?.platformVerified == true && approvedPartnerRoles.isNotEmpty()) ||
+                UserSessionManager.isNurseryOwner(context)
+            var activeDashboardMode by remember(currentSession?.activeDashboardMode) {
+                mutableStateOf(UserSessionManager.getActiveDashboardMode(context))
+            }
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isVerifiedPartner) com.example.ui.theme.RoyalGold.copy(alpha = 0.6f)
+                    else MaterialTheme.colorScheme.outlineVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_partner_hub_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Handshake,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "পার্টনার ও ড্যাশবোর্ড মোড"
+                                    AppLanguage.HINDI -> "पार्टनर व डैशबोर्ड मोड"
+                                    AppLanguage.ENGLISH -> "Partner & Dashboard Mode"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        if (isVerifiedPartner) {
+                            Surface(
+                                color = com.example.ui.theme.RoyalSuccessBg,
+                                border = BorderStroke(1.dp, com.example.ui.theme.RoyalGold),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier.testTag("profile_verified_partner_badge")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Verified,
+                                        contentDescription = null,
+                                        tint = com.example.ui.theme.RoyalSuccessText,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = when (currentLanguage) {
+                                            AppLanguage.BENGALI -> "যাচাইকৃত"
+                                            AppLanguage.HINDI -> "सत्यापित"
+                                            AppLanguage.ENGLISH -> "Verified"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = com.example.ui.theme.RoyalSuccessText
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (approvedPartnerRoles.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            approvedPartnerRoles.forEach { role ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = role.getLabel(currentLanguage),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (partnerReg != null) {
+                        val pStatus = PartnerRegistrationStatus.fromCode(partnerReg?.status)
+                        if (pStatus != null) {
+                            Text(
+                                text = "${partnerReg?.businessName.orEmpty()} • ${pStatus.getLabel(currentLanguage)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AgriTextSecondary
+                            )
+                        }
+                    }
+
+                    if (hasPartnerDashboardAccess) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val farmerActive = activeDashboardMode == DashboardMode.FARMER_DASHBOARD
+                            Button(
+                                onClick = {
+                                    activeDashboardMode = DashboardMode.FARMER_DASHBOARD
+                                    onSwitchDashboardMode(DashboardMode.FARMER_DASHBOARD)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (farmerActive) AgriGreenPrimary else MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = if (farmerActive) Color.White else AgriTextPrimary
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("profile_switch_farmer_btn")
+                            ) {
+                                Text(
+                                    text = DashboardMode.FARMER_DASHBOARD.getLabel(currentLanguage),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    activeDashboardMode = DashboardMode.PARTNER_DASHBOARD
+                                    onSwitchDashboardMode(DashboardMode.PARTNER_DASHBOARD)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (!farmerActive) AgriGreenPrimary else MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = if (!farmerActive) Color.White else AgriTextPrimary
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("profile_switch_partner_btn")
+                            ) {
+                                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = DashboardMode.PARTNER_DASHBOARD.getLabel(currentLanguage),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenPartnerRegistration,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("profile_become_partner_btn"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Handshake, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = when {
+                                hasPartnerDashboardAccess -> when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "পার্টনার নিবন্ধন ও অতিরিক্ত ভূমিকা পরিচালনা করুন"
+                                    AppLanguage.HINDI -> "पार्टनर पंजीकरण व अतिरिक्त भूमिकाएँ प्रबंधित करें"
+                                    AppLanguage.ENGLISH -> "Manage Partner Roles & Registration"
+                                }
+                                partnerReg != null -> when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "পার্টনার আবেদনের স্থিতি দেখুন"
+                                    AppLanguage.HINDI -> "पार्टनर आवेदन स्थिति देखें"
+                                    AppLanguage.ENGLISH -> "View Partner Registration Status"
+                                }
+                                else -> when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "পার্টনার হিসেবে যুক্ত হন (Become a Partner)"
+                                    AppLanguage.HINDI -> "पार्टनर बनें (Become a Partner)"
+                                    AppLanguage.ENGLISH -> "Become a Partner"
+                                }
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
             // Nursery Portal & Role Management Section
-            val currentSession = remember { UserSessionManager.getSession(context) }
             val nurseryRepo = remember { NurseryApplicationRepository(context) }
             val allApps by nurseryRepo.allApplicationsFlow.collectAsState(initial = emptyList())
-            val userApp = remember(allApps, currentSession) {
-                allApps.find { it.userId == currentSession?.userId }
+            val userApp = remember(allApps, userId) {
+                allApps.find { it.userId == userId }
             }
 
             Card(
@@ -833,7 +1152,11 @@ fun ProfileScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { showDeleteAccountDialog = true },
+                        onClick = {
+                            deleteAccountError = null
+                            requiresRecentLoginForDelete = false
+                            showDeleteAccountDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("profile_delete_account_btn"),
                         border = BorderStroke(1.dp, AgriAlertRed.copy(alpha = 0.6f)),
                         shape = RoundedCornerShape(10.dp)
@@ -940,7 +1263,13 @@ fun ProfileScreen(
 
     if (showDeleteAccountDialog) {
         AlertDialog(
-            onDismissRequest = { if (!isDeletingAccount) showDeleteAccountDialog = false },
+            onDismissRequest = {
+                if (!isDeletingAccount) {
+                    showDeleteAccountDialog = false
+                    deleteAccountError = null
+                    requiresRecentLoginForDelete = false
+                }
+            },
             title = {
                 Text(
                     when (currentLanguage) {
@@ -953,21 +1282,106 @@ fun ProfileScreen(
                 )
             },
             text = {
-                Text(
-                    when (currentLanguage) {
-                        AppLanguage.BENGALI -> "এটি আপনার গোপনীয়তা (PRIVACY_DATA) মুছে ফেলার অনুরোধ লগ করবে, এই ডিভাইসের সেশন ক্যাশ মুছে ফেলবে এবং সম্ভব হলে ক্লাউড অ্যাকাউন্ট সরিয়ে সাইন আউট করবে।"
-                        AppLanguage.HINDI -> "यह आपका गोपनीयता (PRIVACY_DATA) विलोपन अनुरोध दर्ज करेगा, डिवाइस का स्थानीय सत्र साफ़ करेगा और क्लाउड खाता हटाने का प्रयास कर साइन आउट करेगा।"
-                        AppLanguage.ENGLISH -> "This logs a formal DPDP deletion ticket, clears your local device session/profile cache, attempts Firebase account removal if recently authenticated, and signs you out."
-                    },
-                    fontSize = 13.sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        when (currentLanguage) {
+                            AppLanguage.BENGALI -> "এটি আপনার গোপনীয়তা (PRIVACY_DATA) মুছে ফেলার অনুরোধ লগ করবে, ক্লাউড অ্যাকাউন্ট মুছতে সাম্প্রতিক Google যাচাইকরণ নিশ্চিত করবে এবং তারপর এই ডিভাইসের সেশন ক্যাশ সাফ করবে।"
+                            AppLanguage.HINDI -> "यह आपका गोपनीयता (PRIVACY_DATA) विलोपन अनुरोध दर्ज करेगा, क्लाउड खाता हटाने के लिए हालिया Google सत्यापन जाँचेगा और फिर डिवाइस का स्थानीय सत्र साफ़ करेगा।"
+                            AppLanguage.ENGLISH -> "This logs a formal DPDP deletion ticket, verifies recent Google authentication before deleting your cloud Firebase account, and clears your local session cache."
+                        },
+                        fontSize = 13.sp
+                    )
+                    if (!deleteAccountError.isNullOrBlank()) {
+                        Text(
+                            text = deleteAccountError ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("delete_account_error_text")
+                        )
+                    }
+                    if (requiresRecentLoginForDelete) {
+                        OutlinedButton(
+                            enabled = !isDeletingAccount,
+                            onClick = {
+                                isDeletingAccount = true
+                                deleteAccountError = null
+                                onGoogleSignInClicked(
+                                    context = context,
+                                    credentialManager = credentialManager,
+                                    onAuthSuccess = {
+                                        isDeletingAccount = false
+                                        requiresRecentLoginForDelete = false
+                                        onCloudSessionUpdated()
+                                        Toast.makeText(
+                                            context,
+                                            when (currentLanguage) {
+                                                AppLanguage.BENGALI -> "Google পুনরায় যাচাই সম্পন্ন। এখন মুছুন নিশ্চিত করুন।"
+                                                AppLanguage.HINDI -> "Google पुनः सत्यापन पूर्ण। अब विलोपन की पुष्टि करें।"
+                                                AppLanguage.ENGLISH -> "Google reauthentication succeeded. Tap Confirm Delete to proceed."
+                                            },
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    },
+                                    onAuthError = { err ->
+                                        isDeletingAccount = false
+                                        deleteAccountError = err
+                                    },
+                                    onAuthCancelled = {
+                                        isDeletingAccount = false
+                                    },
+                                    scope = coroutineScope,
+                                    currentLanguage = currentLanguage
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("reauth_google_delete_btn")
+                        ) {
+                            Text(
+                                when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "Google দিয়ে পুনরায় যাচাই করুন"
+                                    AppLanguage.HINDI -> "Google से पुनः सत्यापित करें"
+                                    AppLanguage.ENGLISH -> "Reauthenticate with Google"
+                                },
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     enabled = !isDeletingAccount,
                     onClick = {
                         isDeletingAccount = true
+                        deleteAccountError = null
                         coroutineScope.launch {
+                            val hasCloudSession = UserSessionManager.hasCloudFirebaseSession(context)
+                            val fbUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+                            if (hasCloudSession) {
+                                if (!NetworkConnectivityMonitor.isCurrentlyOnline()) {
+                                    isDeletingAccount = false
+                                    deleteAccountError = when (currentLanguage) {
+                                        AppLanguage.BENGALI -> "ক্লাউড অ্যাকাউন্ট মুছতে ইন্টারনেট সংযোগ প্রয়োজন।"
+                                        AppLanguage.HINDI -> "क्लाउड खाता हटाने के लिए इंटरनेट कनेक्शन आवश्यक है।"
+                                        AppLanguage.ENGLISH -> "Internet connection is required to delete your cloud account."
+                                    }
+                                    return@launch
+                                }
+                                if (fbUser == null) {
+                                    isDeletingAccount = false
+                                    requiresRecentLoginForDelete = true
+                                    deleteAccountError = when (currentLanguage) {
+                                        AppLanguage.BENGALI -> "অ্যাকাউন্ট মুছতে Google দিয়ে পুনরায় সাইন ইন করুন।"
+                                        AppLanguage.HINDI -> "खाता हटाने के लिए Google से पुनः साइन इन करें।"
+                                        AppLanguage.ENGLISH -> "Reauthentication required before deleting your cloud account."
+                                    }
+                                    return@launch
+                                }
+                            }
+
                             runCatching {
                                 trustRepo.submitGrievanceTicket(
                                     userId = userId,
@@ -978,9 +1392,32 @@ fun ProfileScreen(
                                     relatedEntityId = userId
                                 )
                             }
-                            runCatching {
-                                Firebase.auth.currentUser?.delete()?.await()
+
+                            if (fbUser != null) {
+                                try {
+                                    fbUser.delete().await()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: FirebaseAuthRecentLoginRequiredException) {
+                                    isDeletingAccount = false
+                                    requiresRecentLoginForDelete = true
+                                    deleteAccountError = when (currentLanguage) {
+                                        AppLanguage.BENGALI -> "নিরাপত্তার জন্য আপনার Google অ্যাকাউন্ট পুনরায় যাচাই করা প্রয়োজন। নিচের বোতামে ট্যাপ করুন।"
+                                        AppLanguage.HINDI -> "सुरक्षा के लिए Google खाते का पुनः सत्यापन आवश्यक है। नीचे बटन दबाएँ।"
+                                        AppLanguage.ENGLISH -> "Recent Google sign-in verification is required before account deletion. Please reauthenticate below."
+                                    }
+                                    return@launch
+                                } catch (e: Exception) {
+                                    isDeletingAccount = false
+                                    deleteAccountError = when (currentLanguage) {
+                                        AppLanguage.BENGALI -> "ক্লাউড অ্যাকাউন্ট মুছে ফেলা যায়নি: ${e.localizedMessage ?: "আবার চেষ্টা করুন"}"
+                                        AppLanguage.HINDI -> "क्लाउड खाता हटाया नहीं जा सका: ${e.localizedMessage ?: "पुनः प्रयास करें"}"
+                                        AppLanguage.ENGLISH -> "Failed to delete cloud account: ${e.localizedMessage ?: "Please retry"}"
+                                    }
+                                    return@launch
+                                }
                             }
+
                             isDeletingAccount = false
                             showDeleteAccountDialog = false
                             Toast.makeText(
@@ -988,7 +1425,7 @@ fun ProfileScreen(
                                 when (currentLanguage) {
                                     AppLanguage.BENGALI -> "ডেটা মুছে ফেলার অনুরোধ সম্পন্ন ও সেশন সাফ করা হয়েছে।"
                                     AppLanguage.HINDI -> "खाता विलोपन अनुरोध दर्ज व सत्र साफ़ किया गया।"
-                                    AppLanguage.ENGLISH -> "Deletion request logged and local session cleared."
+                                    AppLanguage.ENGLISH -> "Account deletion completed and local session cleared."
                                 },
                                 Toast.LENGTH_LONG
                             ).show()
@@ -1011,7 +1448,11 @@ fun ProfileScreen(
             dismissButton = {
                 TextButton(
                     enabled = !isDeletingAccount,
-                    onClick = { showDeleteAccountDialog = false }
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        deleteAccountError = null
+                        requiresRecentLoginForDelete = false
+                    }
                 ) {
                     Text(L10n.t("btn_close", currentLanguage))
                 }

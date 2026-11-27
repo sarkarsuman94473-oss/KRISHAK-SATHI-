@@ -1,10 +1,14 @@
 package com.example.ui.ai
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -47,6 +51,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
@@ -73,6 +78,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -99,6 +105,7 @@ import com.example.data.model.AppLanguage
 import com.example.data.remote.AiAdminRepository
 import com.example.data.remote.GeneralAiService
 import com.example.ui.theme.AgriGreenPrimary
+import com.example.util.L10n
 import com.example.util.loadSafeBitmapFromUri
 import com.example.util.safeStartActivity
 import com.example.util.scaleBitmapBounded
@@ -106,6 +113,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
 private const val GENERAL_AI_TYPE = "GENERAL_AI"
@@ -160,6 +168,80 @@ fun GeneralAiScreen(
     var showHistorySheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf<GeneralAiSessionEntity?>(null) }
     var renameInputText by remember { mutableStateOf("") }
+
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var speakingMessageId by remember { mutableStateOf<String?>(null) }
+
+    fun localeFor(lang: AppLanguage): Locale = when (lang) {
+        AppLanguage.BENGALI -> Locale("bn", "IN")
+        AppLanguage.HINDI -> Locale("hi", "IN")
+        AppLanguage.ENGLISH -> Locale("en", "IN")
+    }
+
+    DisposableEffect(context) {
+        val ttsEngine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ttsReady = true
+            }
+        }
+        ttsEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+                if (speakingMessageId == utteranceId) speakingMessageId = null
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                if (speakingMessageId == utteranceId) speakingMessageId = null
+            }
+        })
+        tts = ttsEngine
+        onDispose {
+            ttsEngine.stop()
+            ttsEngine.shutdown()
+        }
+    }
+
+    LaunchedEffect(currentLanguage, ttsReady, tts) {
+        if (ttsReady) {
+            tts?.language = localeFor(currentLanguage)
+        }
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spoken = matches?.firstOrNull()?.trim()
+            if (!spoken.isNullOrBlank()) {
+                inputText = if (inputText.isBlank()) spoken else "$inputText $spoken"
+            }
+        }
+    }
+
+    fun launchVoiceInput() {
+        val langTag = when (currentLanguage) {
+            AppLanguage.BENGALI -> "bn-IN"
+            AppLanguage.HINDI -> "hi-IN"
+            AppLanguage.ENGLISH -> "en-IN"
+        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, L10n.t("ai_voice_speak", currentLanguage))
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (_: Exception) {
+            val msg = when (currentLanguage) {
+                AppLanguage.BENGALI -> "এই ডিভাইসে ভয়েস ইনপুট সমর্থিত নয়।"
+                AppLanguage.HINDI -> "इस डिवाइस पर वॉइस इनपुट उपलब्ध नहीं है।"
+                AppLanguage.ENGLISH -> "Voice dictation is unavailable on this device."
+            }
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -432,7 +514,7 @@ fun GeneralAiScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "AI Assistant",
+                                text = L10n.t("ai_assistant_title", currentLanguage),
                                 fontSize = 17.sp,
                                 lineHeight = 22.sp,
                                 fontWeight = FontWeight.Bold,
@@ -441,7 +523,7 @@ fun GeneralAiScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Dual AI • Gemini + OpenAI Backup",
+                                text = L10n.t("ai_assistant_subtitle", currentLanguage),
                                 fontSize = 11.sp,
                                 lineHeight = 14.sp,
                                 maxLines = 1,
@@ -560,7 +642,23 @@ fun GeneralAiScreen(
                             },
                             onOpenUrl = { url -> openCitationUrl(context, url, currentLanguage) },
                             onOpenExperts = onOpenExperts,
-                            onGoogleSearch = { query -> openGoogleSearch(query) }
+                            onGoogleSearch = { query -> openGoogleSearch(query) },
+                            isSpeaking = speakingMessageId == msg.id,
+                            onToggleSpeak = {
+                                val engine = tts
+                                if (engine != null && ttsReady) {
+                                    if (speakingMessageId == msg.id) {
+                                        engine.stop()
+                                        speakingMessageId = null
+                                    } else {
+                                        engine.language = localeFor(currentLanguage)
+                                        speakingMessageId = msg.id
+                                        engine.speak(msg.text, TextToSpeech.QUEUE_FLUSH, null, msg.id)
+                                    }
+                                } else {
+                                    Toast.makeText(context, L10n.t("ai_tts_read_aloud", currentLanguage), Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
 
@@ -708,6 +806,32 @@ fun GeneralAiScreen(
                         )
 
                         Spacer(modifier = Modifier.width(6.dp))
+
+                        IconButton(
+                            onClick = { launchVoiceInput() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("general_ai_voice_btn")
+                        ) {
+                            Icon(
+                                Icons.Default.Mic,
+                                contentDescription = L10n.t("ai_voice_speak", currentLanguage),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { launchVoiceInput() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("general_ai_voice_btn")
+                        ) {
+                            Icon(
+                                Icons.Default.Mic,
+                                contentDescription = L10n.t("ai_voice_speak", currentLanguage),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
                         val canSend = !isGenerating && (inputText.isNotBlank() || selectedBitmap != null)
                         IconButton(
@@ -986,7 +1110,7 @@ fun WelcomeAiCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Dual AI: Google Gemini + OpenAI Backup",
+                        text = L10n.t("ai_assistant_subtitle", language),
                         fontSize = 11.sp,
                         lineHeight = 15.sp,
                         color = MaterialTheme.colorScheme.primary,
@@ -1081,7 +1205,9 @@ fun ChatBubbleItem(
     onFeedback: (Boolean) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     onOpenExperts: () -> Unit = {},
-    onGoogleSearch: (String) -> Unit
+    onGoogleSearch: (String) -> Unit,
+    isSpeaking: Boolean = false,
+    onToggleSpeak: (() -> Unit)? = null
 ) {
     val isUser = message.sender == "user"
     val citations = remember(message.sourcesJson) { AiCitationsCodec.decode(message.sourcesJson) }
@@ -1207,7 +1333,9 @@ fun ChatBubbleItem(
                         onCopy = { onCopy(message.text) },
                         onShare = { onShare(message.text) },
                         onRetry = onRetry,
-                        onFeedback = onFeedback
+                        onFeedback = onFeedback,
+                        isSpeaking = isSpeaking,
+                        onToggleSpeak = onToggleSpeak
                     )
                 }
             }

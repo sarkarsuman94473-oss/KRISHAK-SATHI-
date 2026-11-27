@@ -7,6 +7,7 @@ import com.example.R
 import com.example.data.datasource.MachinerySeedCatalog
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.ActivityEntityType
+import com.example.data.local.session.UserSessionManager
 import com.example.data.local.entity.MachineryDealerEntity
 import com.example.data.local.entity.MachineryDealerOfferEntity
 import com.example.data.local.entity.MachineryFavouriteEntity
@@ -21,6 +22,7 @@ import com.example.data.model.AppLanguage
 import com.example.data.model.BookingLifecycleStatus
 import com.example.data.model.MachineryAdminAuditLog
 import com.example.data.model.MachineryCategory
+import com.example.data.model.MachineryCondition
 import com.example.data.model.MachineryDealerEntry
 import com.example.data.model.MachineryDealerOffer
 import com.example.data.model.MachineryInquiryRecord
@@ -38,6 +40,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
@@ -183,10 +186,32 @@ class MachineryRepository(
         photoUri: Uri
     ): Result<UploadedEquipmentPhoto> = MachineryImageStorageManager.uploadEquipmentPhoto(context, machineId, photoUri)
 
-    suspend fun pullProductsFromFirestore(): Int {
-        val db = firestore ?: return 0
-        val user = try { Firebase.auth.currentUser } catch (_: Exception) { null }
-        if (user == null || user.uid.isBlank()) return 0
+    private fun hasActiveCloudAuth(): Boolean =
+        runCatching { Firebase.auth.currentUser?.uid?.isNotBlank() == true }.getOrDefault(false)
+
+    private fun isCurrentFirebaseAdmin(): Boolean =
+        runCatching {
+            Firebase.auth.currentUser?.email?.trim()?.equals(UserSessionManager.ADMIN_EMAIL, ignoreCase = true) == true
+        }.getOrDefault(false)
+
+    private fun sanitizePhotoTokensCsv(rawCsv: String): String =
+        rawCsv.split(",")
+            .map { it.trim() }
+            .filter {
+                it.isNotBlank() &&
+                    !it.startsWith("content://", ignoreCase = true) &&
+                    !it.startsWith("file://", ignoreCase = true)
+            }
+            .distinct()
+            .joinToString(",")
+
+    suspend fun pullProductsFromFirestore(): Int =
+        pullProductsResult().getOrDefault(0)
+
+    suspend fun pullProductsResult(): Result<Int> {
+        val user = runCatching { Firebase.auth.currentUser }.getOrNull()
+        if (user == null || user.uid.isBlank()) return Result.success(0)
+        val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
         return try {
             val snap = db.collection("machinery_products").get().await()
             val remote = snap.documents.mapNotNull { d ->
@@ -212,7 +237,7 @@ class MachineryRepository(
                     forSale = d.getBoolean("forSale") ?: true,
                     forRent = d.getBoolean("forRent") ?: false,
                     salePriceInr = d.getDouble("salePriceInr"),
-                    photosCsv = d.getString("photosCsv") ?: "",
+                    photosCsv = sanitizePhotoTokensCsv(d.getString("photosCsv") ?: ""),
                     firebaseStoragePathsCsv = d.getString("firebaseStoragePathsCsv") ?: "",
                     listingOrigin = d.getString("listingOrigin") ?: "SELLER_LISTING",
                     approvalStatus = d.getString("approvalStatus") ?: "PENDING_APPROVAL",
@@ -233,10 +258,183 @@ class MachineryRepository(
             if (remote.isNotEmpty()) {
                 dao.upsertProducts(remote.map { MachineryProductEntity.fromModel(it) })
             }
-            remote.size
+            Result.success(remote.size)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w("MachineryRepo", "Product pull deferred: ${e.message}")
-            0
+            Log.w("MachineryRepo", "Product pull failed: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun pullUserRequestsAndDealersFromFirestore(
+        userId: String,
+        isAdmin: Boolean = false
+    ): Result<Int> {
+        val user = runCatching { Firebase.auth.currentUser }.getOrNull()
+        if (user == null || user.uid.isBlank() || userId.isBlank()) return Result.success(0)
+        val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+        return try {
+            var totalSynced = 0
+
+            val dealerSnap = db.collection("machinery_dealers").get().await()
+            val dealerEntities = dealerSnap.documents.mapNotNull { d ->
+                val businessName = d.getString("businessName")?.trim().orEmpty()
+                if (businessName.isBlank()) return@mapNotNull null
+                val existing = dao.getDealerById(d.id)?.toModel()
+                val updated = (existing ?: MachineryDealerEntry(
+                    dealerId = d.id,
+                    businessName = businessName,
+                    localityCode = d.getString("localityCode") ?: "SILIGURI"
+                )).copy(
+                    businessName = businessName,
+                    localityCode = d.getString("localityCode") ?: existing?.localityCode ?: "SILIGURI",
+                    district = d.getString("district") ?: existing?.district ?: "Darjeeling / Jalpaiguri",
+                    state = d.getString("state") ?: existing?.state ?: "West Bengal",
+                    fullAddress = d.getString("fullAddress") ?: existing?.fullAddress,
+                    pinCode = d.getString("pinCode") ?: existing?.pinCode,
+                    ownerName = d.getString("ownerName") ?: existing?.ownerName,
+                    phone = d.getString("phone") ?: existing?.phone,
+                    whatsapp = d.getString("whatsapp") ?: existing?.whatsapp,
+                    verificationStatus = d.getString("verificationStatus") ?: existing?.verificationStatus
+                        ?: NurseryVerificationStatus.PENDING_VERIFICATION,
+                    ownerConsentStatus = d.getString("ownerConsentStatus") ?: existing?.ownerConsentStatus
+                        ?: "NOT_CONFIRMED",
+                    isVerified = d.getBoolean("isVerified") ?: existing?.isVerified ?: false,
+                    isAuthorisedDealerVerified = d.getBoolean("isAuthorisedDealerVerified")
+                        ?: existing?.isAuthorisedDealerVerified ?: false,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+                MachineryDealerEntity.fromModel(updated)
+            }
+            if (dealerEntities.isNotEmpty()) {
+                dao.upsertDealers(dealerEntities)
+                totalSynced += dealerEntities.size
+            }
+
+            val offerSnap = db.collection("machinery_dealer_offers").get().await()
+            val offerEntities = offerSnap.documents.mapNotNull { d ->
+                val machineId = d.getString("machineId")?.trim().orEmpty()
+                if (machineId.isBlank()) return@mapNotNull null
+                MachineryDealerOfferEntity.fromModel(
+                    MachineryDealerOffer(
+                        offerId = d.id,
+                        machineId = machineId,
+                        dealerId = d.getString("dealerId") ?: "",
+                        dealerName = d.getString("dealerName") ?: "",
+                        localityCode = d.getString("localityCode") ?: "SILIGURI",
+                        modelNumber = d.getString("modelNumber") ?: "",
+                        condition = d.getString("condition") ?: MachineryCondition.NEW.code,
+                        offersSale = d.getBoolean("offersSale") ?: true,
+                        offersRent = d.getBoolean("offersRent") ?: false,
+                        mrpInr = d.getDouble("mrpInr"),
+                        dealerPriceInr = d.getDouble("dealerPriceInr"),
+                        indicativePriceInr = d.getDouble("indicativePriceInr"),
+                        rentalHourlyInr = d.getDouble("rentalHourlyInr"),
+                        rentalDailyInr = d.getDouble("rentalDailyInr"),
+                        rentalPerAcreInr = d.getDouble("rentalPerAcreInr"),
+                        stockStatus = d.getString("stockStatus") ?: "IN_STOCK",
+                        verificationStatus = d.getString("verificationStatus") ?: "PENDING_VERIFICATION",
+                        isOutdatedPrice = d.getBoolean("isOutdatedPrice") ?: false,
+                        updatedAtMillis = System.currentTimeMillis()
+                    )
+                )
+            }
+            if (offerEntities.isNotEmpty()) {
+                dao.upsertOffers(offerEntities)
+                totalSynced += offerEntities.size
+            }
+
+            val adminAccess = isAdmin || isCurrentFirebaseAdmin()
+
+            val inquiryDocs = if (adminAccess) {
+                db.collection("machinery_inquiries").get().await().documents
+            } else {
+                val asBuyer = db.collection("machinery_inquiries").whereEqualTo("userId", userId).get().await().documents
+                val asSeller = db.collection("machinery_inquiries").whereEqualTo("sellerUserId", userId).get().await().documents
+                (asBuyer + asSeller).distinctBy { it.id }
+            }
+            inquiryDocs.forEach { d ->
+                val rec = MachineryInquiryRecord(
+                    id = d.id,
+                    userId = d.getString("userId") ?: "",
+                    farmerName = d.getString("farmerName") ?: "",
+                    farmerPhone = d.getString("farmerPhone") ?: "",
+                    machineId = d.getString("machineId") ?: "",
+                    machineName = d.getString("machineName") ?: "",
+                    sellerUserId = d.getString("sellerUserId") ?: "",
+                    inquiryType = d.getString("inquiryType") ?: "QUOTATION",
+                    message = d.getString("message") ?: "",
+                    status = d.getString("status") ?: BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
+                    sellerReply = d.getString("sellerReply") ?: "",
+                    createdAtMillis = d.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                )
+                dao.upsertInquiry(MachineryInquiryEntity.fromModel(rec))
+                totalSynced++
+            }
+
+            val rentalDocs = if (adminAccess) {
+                db.collection("machinery_rentals").get().await().documents
+            } else {
+                val asBuyer = db.collection("machinery_rentals").whereEqualTo("userId", userId).get().await().documents
+                val asSeller = db.collection("machinery_rentals").whereEqualTo("sellerUserId", userId).get().await().documents
+                (asBuyer + asSeller).distinctBy { it.id }
+            }
+            rentalDocs.forEach { d ->
+                val rec = MachineryRentalRequest(
+                    id = d.id,
+                    userId = d.getString("userId") ?: "",
+                    farmerName = d.getString("farmerName") ?: "",
+                    farmerPhone = d.getString("farmerPhone") ?: "",
+                    machineId = d.getString("machineId") ?: "",
+                    machineName = d.getString("machineName") ?: "",
+                    sellerUserId = d.getString("sellerUserId") ?: "",
+                    locality = d.getString("locality") ?: "",
+                    rentalUnit = d.getString("rentalUnit") ?: "DAILY",
+                    durationUnits = (d.getLong("durationUnits") ?: 1L).toInt(),
+                    withOperator = d.getBoolean("withOperator") ?: false,
+                    deliveryRequired = d.getBoolean("deliveryRequired") ?: false,
+                    notes = d.getString("notes") ?: "",
+                    status = d.getString("status") ?: BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
+                    createdAtMillis = d.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                )
+                dao.upsertRental(MachineryRentalEntity.fromModel(rec))
+                totalSynced++
+            }
+
+            val serviceDocs = if (adminAccess) {
+                db.collection("machinery_service_requests").get().await().documents
+            } else {
+                val asBuyer = db.collection("machinery_service_requests").whereEqualTo("userId", userId).get().await().documents
+                val asProvider = db.collection("machinery_service_requests").whereEqualTo("providerUserId", userId).get().await().documents
+                (asBuyer + asProvider).distinctBy { it.id }
+            }
+            serviceDocs.forEach { d ->
+                val rec = MachineryServiceRequest(
+                    id = d.id,
+                    userId = d.getString("userId") ?: "",
+                    farmerName = d.getString("farmerName") ?: "",
+                    farmerPhone = d.getString("farmerPhone") ?: "",
+                    serviceTypeCode = d.getString("serviceTypeCode") ?: "",
+                    locality = d.getString("locality") ?: "",
+                    landSizeText = d.getString("landSizeText") ?: "",
+                    cropName = d.getString("cropName") ?: "",
+                    preferredDate = d.getString("preferredDate") ?: "",
+                    notes = d.getString("notes") ?: "",
+                    providerUserId = d.getString("providerUserId") ?: "",
+                    status = d.getString("status") ?: BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
+                    createdAtMillis = d.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                )
+                dao.upsertServiceRequest(MachineryServiceRequestEntity.fromModel(rec))
+                totalSynced++
+            }
+
+            Result.success(totalSynced)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("MachineryRepo", "User requests/dealers pull failed: ${e.message}")
+            Result.failure(e)
         }
     }
 
@@ -265,7 +463,11 @@ class MachineryRepository(
             updatedAtMillis = System.currentTimeMillis()
         )
         dao.upsertProduct(MachineryProductEntity.fromModel(updated))
-        pushProductToFirestore(updated)
+        val pushRes = pushProductToFirestore(updated)
+        if (pushRes.isFailure) {
+            dao.upsertProduct(MachineryProductEntity.fromModel(existing))
+            return Result.failure(pushRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+        }
         logAdminAudit(
             MachineryAdminAuditLog(
                 id = "audit_${System.currentTimeMillis()}",
@@ -343,33 +545,32 @@ class MachineryRepository(
                 lastPriceUpdatedDate = todayIso(),
                 updatedAtMillis = System.currentTimeMillis()
             )
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_dealer_offers").document(clean.offerId).set(
+                    mapOf(
+                        "machineId" to clean.machineId,
+                        "dealerId" to clean.dealerId,
+                        "dealerName" to clean.dealerName.take(200),
+                        "localityCode" to clean.localityCode,
+                        "modelNumber" to clean.modelNumber.take(120),
+                        "condition" to clean.condition,
+                        "offersSale" to clean.offersSale,
+                        "offersRent" to clean.offersRent,
+                        "mrpInr" to clean.mrpInr,
+                        "dealerPriceInr" to clean.dealerPriceInr,
+                        "indicativePriceInr" to clean.indicativePriceInr,
+                        "rentalHourlyInr" to clean.rentalHourlyInr,
+                        "rentalDailyInr" to clean.rentalDailyInr,
+                        "rentalPerAcreInr" to clean.rentalPerAcreInr,
+                        "stockStatus" to clean.stockStatus,
+                        "verificationStatus" to clean.verificationStatus,
+                        "isOutdatedPrice" to clean.isOutdatedPrice,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
             dao.upsertOffer(MachineryDealerOfferEntity.fromModel(clean))
-            try {
-                if (firestore != null && Firebase.auth.currentUser != null) {
-                    firestore?.collection("machinery_dealer_offers")?.document(clean.offerId)?.set(
-                        mapOf(
-                            "machineId" to clean.machineId,
-                            "dealerId" to clean.dealerId,
-                            "dealerName" to clean.dealerName.take(200),
-                            "localityCode" to clean.localityCode,
-                            "modelNumber" to clean.modelNumber.take(120),
-                            "condition" to clean.condition,
-                            "offersSale" to clean.offersSale,
-                            "offersRent" to clean.offersRent,
-                            "mrpInr" to clean.mrpInr,
-                            "dealerPriceInr" to clean.dealerPriceInr,
-                            "indicativePriceInr" to clean.indicativePriceInr,
-                            "rentalHourlyInr" to clean.rentalHourlyInr,
-                            "rentalDailyInr" to clean.rentalDailyInr,
-                            "rentalPerAcreInr" to clean.rentalPerAcreInr,
-                            "stockStatus" to clean.stockStatus,
-                            "verificationStatus" to clean.verificationStatus,
-                            "isOutdatedPrice" to clean.isOutdatedPrice,
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    )?.await()
-                }
-            } catch (_: Exception) {}
             logAdminAudit(
                 MachineryAdminAuditLog(
                     id = "audit_${System.currentTimeMillis()}",
@@ -380,6 +581,8 @@ class MachineryRepository(
                 )
             )
             Result.success(clean)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -564,8 +767,15 @@ class MachineryRepository(
                 product.subcategory.contains("Drone", ignoreCase = true)
             val needsEarthSafety = product.categoryCode == MachineryCategory.SOIL_EARTH_MOVING.code
 
+            val sanitizedPhotos = if (hasActiveCloudAuth()) {
+                sanitizePhotoTokensCsv(product.photosCsv)
+            } else {
+                product.photosCsv
+            }
+
             val normalized = product.copy(
                 id = cleanId,
+                photosCsv = sanitizedPhotos,
                 listingOrigin = "SELLER_LISTING",
                 approvalStatus = if (isAdmin) "APPROVED" else "PENDING_APPROVAL",
                 verificationBadgeText = if (isAdmin) "Admin Verified Seller Listing" else "Pending Admin Review",
@@ -574,9 +784,20 @@ class MachineryRepository(
                 lastUpdatedDate = todayIso(),
                 updatedAtMillis = System.currentTimeMillis()
             )
+            val existingBefore = dao.getProductById(cleanId)
             dao.upsertProduct(MachineryProductEntity.fromModel(normalized))
-            pushProductToFirestore(normalized)
+            val pushRes = pushProductToFirestore(normalized)
+            if (pushRes.isFailure) {
+                if (existingBefore != null) {
+                    dao.upsertProduct(existingBefore)
+                } else {
+                    dao.deleteProductById(cleanId)
+                }
+                return Result.failure(pushRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+            }
             Result.success(normalized)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -597,7 +818,11 @@ class MachineryRepository(
             updatedAtMillis = System.currentTimeMillis()
         )
         dao.upsertProduct(MachineryProductEntity.fromModel(updated))
-        pushProductToFirestore(updated)
+        val pushRes = pushProductToFirestore(updated)
+        if (pushRes.isFailure) {
+            dao.upsertProduct(MachineryProductEntity.fromModel(existing))
+            return Result.failure(pushRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+        }
         logAdminAudit(
             MachineryAdminAuditLog(
                 id = "audit_${System.currentTimeMillis()}",
@@ -612,12 +837,11 @@ class MachineryRepository(
 
     suspend fun deleteMachineListing(machineId: String, adminEmail: String): Result<Unit> {
         return try {
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_products").document(machineId).delete().await()
+            }
             dao.deleteProductById(machineId)
-            try {
-                if (firestore != null && Firebase.auth.currentUser != null) {
-                    firestore?.collection("machinery_products")?.document(machineId)?.delete()?.await()
-                }
-            } catch (_: Exception) {}
             logAdminAudit(
                 MachineryAdminAuditLog(
                     id = "audit_${System.currentTimeMillis()}",
@@ -628,6 +852,8 @@ class MachineryRepository(
                 )
             )
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -832,7 +1058,11 @@ class MachineryRepository(
             updatedAtMillis = System.currentTimeMillis()
         )
         dao.upsertDealer(MachineryDealerEntity.fromModel(updated))
-        pushVerificationClaimToFirestore(dealerId, userId, updated.claimNote.orEmpty())
+        val claimSync = pushVerificationClaimToFirestore(dealerId, userId, updated.claimNote.orEmpty())
+        if (claimSync.isFailure) {
+            dao.upsertDealer(MachineryDealerEntity.fromModel(existing))
+            return Result.failure(claimSync.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+        }
         return Result.success(Unit)
     }
 
@@ -843,6 +1073,7 @@ class MachineryRepository(
         markAuthorisedDealer: Boolean,
         adminEmail: String
     ): Result<Unit> {
+        val existingBefore = dao.getDealerById(dealer.dealerId)
         val cleanStatus = if (markVerified && markConsentConfirmed) {
             NurseryVerificationStatus.ADMIN_VERIFIED
         } else {
@@ -858,7 +1089,11 @@ class MachineryRepository(
             updatedAtMillis = System.currentTimeMillis()
         )
         dao.upsertDealer(MachineryDealerEntity.fromModel(updated))
-        pushDealerToFirestore(updated)
+        val pushRes = pushDealerToFirestore(updated)
+        if (pushRes.isFailure) {
+            if (existingBefore != null) dao.upsertDealer(existingBefore)
+            return Result.failure(pushRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+        }
         logAdminAudit(
             MachineryAdminAuditLog(
                 id = "audit_${System.currentTimeMillis()}",
@@ -881,6 +1116,25 @@ class MachineryRepository(
                 status = BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
                 createdAtMillis = System.currentTimeMillis()
             )
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_inquiries").document(clean.id).set(
+                    mapOf(
+                        "userId" to clean.userId,
+                        "farmerName" to clean.farmerName.take(120),
+                        "farmerPhone" to clean.farmerPhone.take(30),
+                        "machineId" to clean.machineId,
+                        "machineName" to clean.machineName.take(200),
+                        "sellerUserId" to clean.sellerUserId,
+                        "inquiryType" to clean.inquiryType,
+                        "message" to clean.message.take(1000),
+                        "status" to clean.status,
+                        "sellerReply" to clean.sellerReply.take(1000),
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
             dao.upsertInquiry(MachineryInquiryEntity.fromModel(clean))
             trustRepo.logActivityEvent(
                 entityType = ActivityEntityType.MACHINERY_INQUIRY,
@@ -890,27 +1144,9 @@ class MachineryRepository(
                 statusLabel = clean.status,
                 note = "${clean.inquiryType}: ${clean.message.take(120)}"
             )
-            try {
-                if (firestore != null && Firebase.auth.currentUser != null) {
-                    firestore?.collection("machinery_inquiries")?.document(clean.id)?.set(
-                        mapOf(
-                            "userId" to clean.userId,
-                            "farmerName" to clean.farmerName.take(120),
-                            "farmerPhone" to clean.farmerPhone.take(30),
-                            "machineId" to clean.machineId,
-                            "machineName" to clean.machineName.take(200),
-                            "sellerUserId" to clean.sellerUserId,
-                            "inquiryType" to clean.inquiryType,
-                            "message" to clean.message.take(1000),
-                            "status" to clean.status,
-                            "sellerReply" to clean.sellerReply.take(1000),
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    )?.await()
-                }
-            } catch (_: Exception) {}
             Result.success(clean)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -937,6 +1173,28 @@ class MachineryRepository(
                 status = BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
                 createdAtMillis = now
             )
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_rentals").document(clean.id).set(
+                    mapOf(
+                        "userId" to clean.userId,
+                        "farmerName" to clean.farmerName.take(120),
+                        "farmerPhone" to clean.farmerPhone.take(30),
+                        "machineId" to clean.machineId,
+                        "machineName" to clean.machineName.take(200),
+                        "sellerUserId" to clean.sellerUserId,
+                        "locality" to clean.locality.take(120),
+                        "rentalUnit" to clean.rentalUnit,
+                        "durationUnits" to clean.durationUnits,
+                        "withOperator" to clean.withOperator,
+                        "deliveryRequired" to clean.deliveryRequired,
+                        "notes" to clean.notes.take(800),
+                        "status" to clean.status,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
             dao.upsertRental(MachineryRentalEntity.fromModel(clean))
             trustRepo.logActivityEvent(
                 entityType = ActivityEntityType.MACHINERY_RENTAL,
@@ -946,30 +1204,9 @@ class MachineryRepository(
                 statusLabel = clean.status,
                 note = "${clean.durationUnits} x ${clean.rentalUnit} (${clean.locality})"
             )
-            try {
-                if (firestore != null && Firebase.auth.currentUser != null) {
-                    firestore?.collection("machinery_rentals")?.document(clean.id)?.set(
-                        mapOf(
-                            "userId" to clean.userId,
-                            "farmerName" to clean.farmerName.take(120),
-                            "farmerPhone" to clean.farmerPhone.take(30),
-                            "machineId" to clean.machineId,
-                            "machineName" to clean.machineName.take(200),
-                            "sellerUserId" to clean.sellerUserId,
-                            "locality" to clean.locality.take(120),
-                            "rentalUnit" to clean.rentalUnit,
-                            "durationUnits" to clean.durationUnits,
-                            "withOperator" to clean.withOperator,
-                            "deliveryRequired" to clean.deliveryRequired,
-                            "notes" to clean.notes.take(800),
-                            "status" to clean.status,
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    )?.await()
-                }
-            } catch (_: Exception) {}
             Result.success(clean)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -982,60 +1219,96 @@ class MachineryRepository(
         if (match.userId != userId) {
             return Result.failure(SecurityException("Only the requesting user can cancel this rental booking"))
         }
-        return updateRentalStatus(rentalId, BookingLifecycleStatus.CANCELLED)
+        return updateRentalStatus(rentalId, BookingLifecycleStatus.CANCELLED, actorUserId = userId)
     }
 
-    suspend fun updateRentalStatus(rentalId: String, newStatus: String): Result<Unit> {
+    suspend fun updateRentalStatus(
+        rentalId: String,
+        newStatus: String,
+        actorUserId: String = "",
+        isAdmin: Boolean = false
+    ): Result<Unit> {
         val allRentals = dao.observeAllRentals().firstOrNull() ?: emptyList()
         val match = allRentals.firstOrNull { it.id == rentalId }?.toModel()
             ?: return Result.failure(NoSuchElementException("Rental not found"))
-        val updated = match.copy(status = newStatus)
-        dao.upsertRental(MachineryRentalEntity.fromModel(updated))
-        trustRepo.logActivityEvent(
-            entityType = ActivityEntityType.MACHINERY_RENTAL,
-            entityId = rentalId,
-            actorRole = if (newStatus == BookingLifecycleStatus.CANCELLED) "FARMER" else "SELLER",
-            actorName = if (newStatus == BookingLifecycleStatus.CANCELLED) match.farmerName else match.sellerUserId.ifBlank { "Dealer" },
-            statusLabel = newStatus,
-            note = "Rental status updated to $newStatus"
-        )
-        try {
-            if (firestore != null && Firebase.auth.currentUser != null) {
-                firestore?.collection("machinery_rentals")?.document(rentalId)
-                    ?.update(mapOf("status" to newStatus, "updatedAt" to FieldValue.serverTimestamp()))
-                    ?.await()
+        val privilegedAdmin = isAdmin || isCurrentFirebaseAdmin()
+        val authorized = privilegedAdmin || (actorUserId.isNotBlank() && (
+            (match.sellerUserId.isNotBlank() && match.sellerUserId == actorUserId) ||
+                (newStatus == BookingLifecycleStatus.CANCELLED && match.userId == actorUserId)
+            ))
+        if (!authorized) {
+            return Result.failure(SecurityException("Not authorized to update this rental booking"))
+        }
+        return try {
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_rentals").document(rentalId)
+                    .update(mapOf("status" to newStatus, "updatedAt" to FieldValue.serverTimestamp()))
+                    .await()
             }
-        } catch (_: Exception) {}
-        return Result.success(Unit)
+            val updated = match.copy(status = newStatus)
+            dao.upsertRental(MachineryRentalEntity.fromModel(updated))
+            trustRepo.logActivityEvent(
+                entityType = ActivityEntityType.MACHINERY_RENTAL,
+                entityId = rentalId,
+                actorRole = if (newStatus == BookingLifecycleStatus.CANCELLED) "FARMER" else "SELLER",
+                actorName = if (newStatus == BookingLifecycleStatus.CANCELLED) match.farmerName else match.sellerUserId.ifBlank { "Dealer" },
+                statusLabel = newStatus,
+                note = "Rental status updated to $newStatus"
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    suspend fun updateInquiryReply(inquiryId: String, reply: String, newStatus: String): Result<Unit> {
+    suspend fun updateInquiryReply(
+        inquiryId: String,
+        reply: String,
+        newStatus: String,
+        actorUserId: String = "",
+        isAdmin: Boolean = false
+    ): Result<Unit> {
         val allInquiries = dao.observeAllInquiries().firstOrNull() ?: emptyList()
         val match = allInquiries.firstOrNull { it.id == inquiryId }?.toModel()
             ?: return Result.failure(NoSuchElementException("Inquiry not found"))
-        val updated = match.copy(sellerReply = reply.take(1000), status = newStatus)
-        dao.upsertInquiry(MachineryInquiryEntity.fromModel(updated))
-        trustRepo.logActivityEvent(
-            entityType = ActivityEntityType.MACHINERY_INQUIRY,
-            entityId = inquiryId,
-            actorRole = "SELLER",
-            actorName = match.sellerUserId.ifBlank { "Dealer" },
-            statusLabel = newStatus,
-            note = reply.take(160)
-        )
-        try {
-            if (firestore != null && Firebase.auth.currentUser != null) {
-                firestore?.collection("machinery_inquiries")?.document(inquiryId)
-                    ?.update(
+        val privilegedAdmin = isAdmin || isCurrentFirebaseAdmin()
+        val authorized = privilegedAdmin ||
+            (actorUserId.isNotBlank() && match.sellerUserId.isNotBlank() && match.sellerUserId == actorUserId)
+        if (!authorized) {
+            return Result.failure(SecurityException("Not authorized to reply to this inquiry"))
+        }
+        return try {
+            val cleanReply = reply.take(1000)
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_inquiries").document(inquiryId)
+                    .update(
                         mapOf(
-                            "sellerReply" to updated.sellerReply,
+                            "sellerReply" to cleanReply,
                             "status" to newStatus,
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
-                    )?.await()
+                    ).await()
             }
-        } catch (_: Exception) {}
-        return Result.success(Unit)
+            val updated = match.copy(sellerReply = cleanReply, status = newStatus)
+            dao.upsertInquiry(MachineryInquiryEntity.fromModel(updated))
+            trustRepo.logActivityEvent(
+                entityType = ActivityEntityType.MACHINERY_INQUIRY,
+                entityId = inquiryId,
+                actorRole = "SELLER",
+                actorName = match.sellerUserId.ifBlank { "Dealer" },
+                statusLabel = newStatus,
+                note = reply.take(160)
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun cancelServiceRequest(serviceId: String, userId: String): Result<Unit> {
@@ -1045,31 +1318,49 @@ class MachineryRepository(
         if (match.userId != userId) {
             return Result.failure(SecurityException("Only the requesting user can cancel this service request"))
         }
-        return updateServiceStatus(serviceId, BookingLifecycleStatus.CANCELLED)
+        return updateServiceStatus(serviceId, BookingLifecycleStatus.CANCELLED, actorUserId = userId)
     }
 
-    suspend fun updateServiceStatus(serviceId: String, newStatus: String): Result<Unit> {
+    suspend fun updateServiceStatus(
+        serviceId: String,
+        newStatus: String,
+        actorUserId: String = "",
+        isAdmin: Boolean = false
+    ): Result<Unit> {
         val allServices = dao.observeAllServices().firstOrNull() ?: emptyList()
         val match = allServices.firstOrNull { it.id == serviceId }?.toModel()
             ?: return Result.failure(NoSuchElementException("Service request not found"))
-        val updated = match.copy(status = newStatus)
-        dao.upsertServiceRequest(MachineryServiceRequestEntity.fromModel(updated))
-        trustRepo.logActivityEvent(
-            entityType = ActivityEntityType.MACHINERY_SERVICE,
-            entityId = serviceId,
-            actorRole = if (newStatus == BookingLifecycleStatus.CANCELLED) "FARMER" else "PROVIDER",
-            actorName = if (newStatus == BookingLifecycleStatus.CANCELLED) match.farmerName else match.providerUserId.ifBlank { "Service Provider" },
-            statusLabel = newStatus,
-            note = "Service status updated to $newStatus"
-        )
-        try {
-            if (firestore != null && Firebase.auth.currentUser != null) {
-                firestore?.collection("machinery_service_requests")?.document(serviceId)
-                    ?.update(mapOf("status" to newStatus, "updatedAt" to FieldValue.serverTimestamp()))
-                    ?.await()
+        val privilegedAdmin = isAdmin || isCurrentFirebaseAdmin()
+        val authorized = privilegedAdmin || (actorUserId.isNotBlank() && (
+            (match.providerUserId.isNotBlank() && match.providerUserId == actorUserId) ||
+                (newStatus == BookingLifecycleStatus.CANCELLED && match.userId == actorUserId)
+            ))
+        if (!authorized) {
+            return Result.failure(SecurityException("Not authorized to update this service request"))
+        }
+        return try {
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_service_requests").document(serviceId)
+                    .update(mapOf("status" to newStatus, "updatedAt" to FieldValue.serverTimestamp()))
+                    .await()
             }
-        } catch (_: Exception) {}
-        return Result.success(Unit)
+            val updated = match.copy(status = newStatus)
+            dao.upsertServiceRequest(MachineryServiceRequestEntity.fromModel(updated))
+            trustRepo.logActivityEvent(
+                entityType = ActivityEntityType.MACHINERY_SERVICE,
+                entityId = serviceId,
+                actorRole = if (newStatus == BookingLifecycleStatus.CANCELLED) "FARMER" else "PROVIDER",
+                actorName = if (newStatus == BookingLifecycleStatus.CANCELLED) match.farmerName else match.providerUserId.ifBlank { "Service Provider" },
+                statusLabel = newStatus,
+                note = "Service status updated to $newStatus"
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun submitServiceRequest(req: MachineryServiceRequest): Result<MachineryServiceRequest> {
@@ -1092,6 +1383,26 @@ class MachineryRepository(
                 status = BookingLifecycleStatus.REQUESTED_AWAITING_CONFIRMATION,
                 createdAtMillis = now
             )
+            if (hasActiveCloudAuth()) {
+                val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+                db.collection("machinery_service_requests").document(clean.id).set(
+                    mapOf(
+                        "userId" to clean.userId,
+                        "farmerName" to clean.farmerName.take(120),
+                        "farmerPhone" to clean.farmerPhone.take(30),
+                        "serviceTypeCode" to clean.serviceTypeCode,
+                        "locality" to clean.locality.take(120),
+                        "landSizeText" to clean.landSizeText.take(80),
+                        "cropName" to clean.cropName.take(100),
+                        "preferredDate" to clean.preferredDate.take(40),
+                        "notes" to clean.notes.take(800),
+                        "providerUserId" to clean.providerUserId,
+                        "status" to clean.status,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
             dao.upsertServiceRequest(MachineryServiceRequestEntity.fromModel(clean))
             trustRepo.logActivityEvent(
                 entityType = ActivityEntityType.MACHINERY_SERVICE,
@@ -1101,28 +1412,9 @@ class MachineryRepository(
                 statusLabel = clean.status,
                 note = "${clean.serviceTypeCode} • ${clean.cropName}"
             )
-            try {
-                if (firestore != null && Firebase.auth.currentUser != null) {
-                    firestore?.collection("machinery_service_requests")?.document(clean.id)?.set(
-                        mapOf(
-                            "userId" to clean.userId,
-                            "farmerName" to clean.farmerName.take(120),
-                            "farmerPhone" to clean.farmerPhone.take(30),
-                            "serviceTypeCode" to clean.serviceTypeCode,
-                            "locality" to clean.locality.take(120),
-                            "landSizeText" to clean.landSizeText.take(80),
-                            "cropName" to clean.cropName.take(100),
-                            "preferredDate" to clean.preferredDate.take(40),
-                            "notes" to clean.notes.take(800),
-                            "providerUserId" to clean.providerUserId,
-                            "status" to clean.status,
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    )?.await()
-                }
-            } catch (_: Exception) {}
             Result.success(clean)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1228,11 +1520,11 @@ class MachineryRepository(
         return scored to summary
     }
 
-    private suspend fun pushProductToFirestore(p: MachineryProduct) {
-        try {
-            val db = firestore ?: return
-            val user = Firebase.auth.currentUser ?: return
-            if (user.uid.isBlank()) return
+    private suspend fun pushProductToFirestore(p: MachineryProduct): Result<Unit> {
+        if (!hasActiveCloudAuth()) return Result.success(Unit)
+        val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+        return try {
+            val cleanPhotos = sanitizePhotoTokensCsv(p.photosCsv)
             db.collection("machinery_products").document(p.id).set(
                 hashMapOf(
                     "sellerUserId" to p.sellerUserId,
@@ -1253,7 +1545,7 @@ class MachineryRepository(
                     "forSale" to p.forSale,
                     "forRent" to p.forRent,
                     "salePriceInr" to p.salePriceInr,
-                    "photosCsv" to p.photosCsv.take(2000),
+                    "photosCsv" to cleanPhotos.take(2000),
                     "firebaseStoragePathsCsv" to p.firebaseStoragePathsCsv.take(2000),
                     "listingOrigin" to p.listingOrigin,
                     "approvalStatus" to p.approvalStatus,
@@ -1271,16 +1563,19 @@ class MachineryRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w("MachineryRepo", "Product push deferred: ${e.message}")
+            Log.w("MachineryRepo", "Product push failed: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    private suspend fun pushDealerToFirestore(d: MachineryDealerEntry) {
-        try {
-            val db = firestore ?: return
-            val user = Firebase.auth.currentUser ?: return
-            if (user.uid.isBlank()) return
+    private suspend fun pushDealerToFirestore(d: MachineryDealerEntry): Result<Unit> {
+        if (!hasActiveCloudAuth()) return Result.success(Unit)
+        val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+        return try {
             db.collection("machinery_dealers").document(d.dealerId).set(
                 hashMapOf(
                     "dealerId" to d.dealerId,
@@ -1300,16 +1595,23 @@ class MachineryRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w("MachineryRepo", "Dealer push deferred: ${e.message}")
+            Log.w("MachineryRepo", "Dealer push failed: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    private suspend fun pushVerificationClaimToFirestore(dealerId: String, userId: String, claimNote: String) {
-        try {
-            val db = firestore ?: return
-            val user = Firebase.auth.currentUser ?: return
-            if (user.uid.isBlank()) return
+    private suspend fun pushVerificationClaimToFirestore(
+        dealerId: String,
+        userId: String,
+        claimNote: String
+    ): Result<Unit> {
+        if (!hasActiveCloudAuth()) return Result.success(Unit)
+        val db = firestore ?: return Result.failure(IllegalStateException("Cloud database unavailable"))
+        return try {
             db.collection("machinery_verification").document("claim_${dealerId}_${userId}").set(
                 hashMapOf(
                     "dealerId" to dealerId,
@@ -1321,7 +1623,12 @@ class MachineryRepository(
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
-        } catch (_: Exception) {}
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     private suspend fun logAdminAudit(log: MachineryAdminAuditLog) {

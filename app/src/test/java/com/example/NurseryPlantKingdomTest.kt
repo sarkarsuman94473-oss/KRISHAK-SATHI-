@@ -146,9 +146,9 @@ class NurseryPlantKingdomTest {
     }
 
     @Test
-    fun `124 species catalog covers all required groups, unique visual keys, and strict exact drawables`() {
+    fun `167 species catalog covers all required groups, unique visual keys, and strict exact drawables`() {
         val all = PlantKingdomCatalog.allPlants
-        assertEquals(124, all.size)
+        assertEquals(167, all.size)
 
         // Unique IDs and unique visualAssetKeys
         val plantIds = all.map { it.plantId }
@@ -175,7 +175,10 @@ class NurseryPlantKingdomTest {
 
         // Strict 1-to-1 exact .jpg drawable rule
         val exactPhotos = PlantPhotoRegistry.getAllExactPhotoMappings()
-        assertEquals(setOf("rose", "marigold", "mango", "banana"), exactPhotos.keys)
+        assertEquals(
+            setOf("rose", "marigold", "mango", "banana", "litchi", "guava", "darjeeling_orange"),
+            exactPhotos.keys
+        )
         assertEquals(exactPhotos.size, exactPhotos.values.toSet().size)
         assertNull(PlantPhotoRegistry.getExactRealPhotoResId("orchids"))
         assertNull(PlantPhotoRegistry.getExactRealPhotoResId("himalayan_blue_poppy"))
@@ -466,9 +469,9 @@ class NurseryPlantKingdomTest {
         assertEquals(80, seedRes.plantsMatchedEnriched)
         assertEquals(0, seedRes.plantsNewlyAdded)
 
-        // Confirm total counts stay clean at 37 nurseries and 124 plants (zero duplicate bloat)
+        // Confirm total counts stay clean at 37 nurseries and 167 plants (zero duplicate bloat)
         assertEquals(37, repository.observeAllDirectoryNurseries().first().size)
-        assertEquals(124, repository.observeAllPlants().first().size)
+        assertEquals(167, repository.observeAllPlants().first().size)
 
         // Verified nursery preserved intact
         val preserved = roomDb.plantKingdomDao().getNurseryById("wb_nurs_01")!!
@@ -513,6 +516,6 @@ class NurseryPlantKingdomTest {
         assertEquals(1, customRes.nurseriesProcessed)
         assertEquals(1, customRes.plantsNewlyAdded)
         assertEquals(38, repository.observeAllDirectoryNurseries().first().size)
-        assertEquals(125, repository.observeAllPlants().first().size)
+        assertEquals(168, repository.observeAllPlants().first().size)
     }
 }

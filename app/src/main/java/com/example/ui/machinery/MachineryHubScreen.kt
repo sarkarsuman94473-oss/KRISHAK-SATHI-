@@ -88,8 +88,10 @@ import com.example.data.model.FarmServiceType
 import com.example.data.model.MachineryCategory
 import com.example.data.model.MachineryCondition
 import com.example.data.model.MachineryProduct
+import com.example.data.local.session.UserSessionManager
 import com.example.data.repository.MachineryRepository
 import com.example.data.repository.TrustAndSafetyRepository
+import com.example.ui.components.OfflineModeBanner
 import com.example.ui.theme.MachineryCardBadgeBg
 import com.example.ui.trust.ActivityTimelineSection
 import com.example.ui.theme.MachineryCardBadgeText
@@ -100,6 +102,8 @@ import com.example.ui.theme.MachineryCardTitleInk
 import com.example.ui.theme.MachineryCardWarnBg
 import com.example.ui.theme.MachineryCardWarnText
 import com.example.ui.theme.MachineryCardWhite
+import com.example.ui.theme.RoyalAlertBg
+import com.example.ui.theme.RoyalAlertText
 import com.example.ui.theme.RoyalBorder
 import com.example.ui.theme.RoyalGold
 import com.example.ui.theme.RoyalGreenCardBg
@@ -112,6 +116,8 @@ import com.example.ui.theme.RoyalTextSecondary
 import com.example.ui.theme.RoyalWarningBg
 import com.example.ui.theme.RoyalWarningText
 import com.example.ui.theme.royalOutlinedTextFieldColors
+import com.example.util.L10n
+import com.example.util.NetworkConnectivityMonitor
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -144,10 +150,32 @@ fun MachineryHubScreen(
     val scope = rememberCoroutineScope()
     val repo = remember(repository) { repository ?: MachineryRepository(context) }
     val trustRepo = remember(context) { TrustAndSafetyRepository(context) }
+    val networkStatus by NetworkConnectivityMonitor.status.collectAsState()
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSyncing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(repo) {
-        repo.ensureSeeded()
-        repo.pullProductsFromFirestore()
+    fun refreshFromCloud() {
+        isSyncing = true
+        syncErrorMessage = null
+        scope.launch {
+            repo.ensureSeeded()
+            if (UserSessionManager.hasCloudFirebaseSession(context)) {
+                val pRes = repo.pullProductsResult()
+                val rRes = repo.pullUserRequestsAndDealersFromFirestore(
+                    userId = userId,
+                    isAdmin = UserSessionManager.isAdmin(context)
+                )
+                val err = pRes.exceptionOrNull() ?: rRes.exceptionOrNull()
+                if (err != null) {
+                    syncErrorMessage = err.localizedMessage ?: "Cloud sync failed"
+                }
+            }
+            isSyncing = false
+        }
+    }
+
+    LaunchedEffect(repo, userId) {
+        refreshFromCloud()
     }
 
     val publicProducts by repo.observePublicProducts().collectAsState(initial = emptyList())
@@ -370,6 +398,45 @@ fun MachineryHubScreen(
                 contentPadding = PaddingValues(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (!networkStatus.isOnline) {
+                    item {
+                        OfflineModeBanner(
+                            language = currentLanguage,
+                            onRetryCheck = {
+                                NetworkConnectivityMonitor.refreshNow(context)
+                                refreshFromCloud()
+                            }
+                        )
+                    }
+                } else if (!syncErrorMessage.isNullOrBlank()) {
+                    item {
+                        Surface(
+                            color = RoyalAlertBg,
+                            border = BorderStroke(1.dp, RoyalAlertText.copy(alpha = 0.6f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("machinery_sync_error_banner")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = syncErrorMessage ?: "",
+                                    color = RoyalAlertText,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                androidx.compose.material3.TextButton(
+                                    onClick = { refreshFromCloud() },
+                                    enabled = !isSyncing
+                                ) {
+                                    Text(L10n.t("net_retry_btn", currentLanguage), color = RoyalSoftGold)
+                                }
+                            }
+                        }
+                    }
+                }
                 // Quick Action Banner: Siliguri Dealers Map + AI Smart Finder
                 item {
                     Card(

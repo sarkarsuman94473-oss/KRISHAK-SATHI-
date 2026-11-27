@@ -65,6 +65,10 @@ object HashRoutes {
     const val ADMIN_BANNERS = "#admin-banners"
     const val ADMIN_TRUST_MODERATION = "#admin-trust-moderation"
     const val LAND_RIGHTS = "#land-rights"
+    const val PARTNER_REGISTRATION = "#partner-registration"
+    const val PARTNER_DASHBOARD = "#partner-dashboard"
+    const val VIDEO_LEARNING = "#video-learning"
+    const val ADMIN_VIDEO_LEARNING = "#admin-video-learning"
 
     fun normalize(rawRoute: String): String {
         val trimmed = rawRoute.trim()

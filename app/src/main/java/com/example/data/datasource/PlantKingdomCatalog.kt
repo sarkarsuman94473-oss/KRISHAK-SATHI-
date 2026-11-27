@@ -10,14 +10,16 @@ import com.example.data.model.PlantSeasonalCollection
  * - Himalayan & Hill Flowers (15 species)
  * - Common Flowering Plants & Seasonal Collections (27 species)
  * - Money Plant & Indoor Plants (22 species + cross-linked Anthurium)
- * - Fruit Plants & Trees (26 species, North Bengal hill & plains varieties)
+ * - Fruit Plants & Trees (69 species: 26 core + 43 extended Tropical, Citrus, Commercial, Hill, Exotic & Nut species)
  * - Ornamental Trees & Climbers (17 species + cross-linked climbers/trees)
  * - Medicinal Plants, Herbs & Succulents (17 species + cross-linked Neem)
  */
 object PlantKingdomCatalog {
 
     val allPlants: List<PlantKingdomEntry> by lazy {
-        PlantKingdomFlowerCatalog.flowers + PlantKingdomGreeneryCatalog.greeneryAndTrees
+        PlantKingdomFlowerCatalog.flowers +
+            PlantKingdomGreeneryCatalog.greeneryAndTrees +
+            PlantKingdomExtendedFruitsCatalog.additionalFruits
     }
 
     fun getById(plantId: String): PlantKingdomEntry? =

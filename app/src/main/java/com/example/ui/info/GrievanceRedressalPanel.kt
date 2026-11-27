@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.config.AppConfigManager
 import com.example.data.local.entity.GrievanceTicketEntity
 import com.example.data.local.session.UserSessionManager
 import com.example.data.model.AppLanguage
@@ -62,6 +63,7 @@ import com.example.ui.theme.EarthTrustBadgeText
 import com.example.ui.theme.EarthWarmCream
 import com.example.ui.theme.EarthWarnInk
 import com.example.ui.theme.EarthWarnSurface
+import com.example.util.L10n
 import com.example.util.safeStartActivity
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -79,6 +81,8 @@ fun GrievanceRedressalPanel(
     val repo = remember { TrustAndSafetyRepository(context) }
     val session = remember { UserSessionManager.getSession(context) }
     val activeUserId = session?.userId ?: "guest_user"
+    val appConfig by AppConfigManager.configState.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { AppConfigManager.getConfig(context) }
 
     val tickets by repo.observeGrievancesForUser(activeUserId).collectAsState(initial = emptyList())
 
@@ -137,21 +141,50 @@ fun GrievanceRedressalPanel(
                     color = EarthInkSecondary
                 )
 
-                // Release Blocker Notice for real statutory Officer Credentials
-                Surface(
-                    color = EarthWarnSurface,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, EarthWarnInk.copy(alpha = 0.4f))
-                ) {
-                    Row(modifier = Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = EarthWarnInk, modifier = Modifier.size(18.dp))
-                        Text(
-                            text = "Release Blocker Notice: Formal Grievance Officer & Nodal Officer legal name, Indian office address, official phone/email & GSTIN must be entered by Business Owner & verified by Legal Counsel prior to Google Play production launch.",
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                            color = EarthWarnInk,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                if (appConfig.hasCompleteStatutoryOfficers()) {
+                    Surface(
+                        color = EarthTrustBadgeBg,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, EarthTrustBadgeText.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth().testTag("grievance_verified_officers_card")
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "✅ ${L10n.t("grievance_officers_verified_title", currentLanguage)}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EarthTrustBadgeText
+                            )
+                            Text("Grievance Officer: ${appConfig.grievanceOfficerName}", fontSize = 11.5.sp, color = EarthInkPrimary, fontWeight = FontWeight.SemiBold)
+                            Text("Email: ${appConfig.grievanceOfficerEmail} • Phone: ${appConfig.grievanceOfficerPhone}", fontSize = 11.sp, color = EarthInkSecondary)
+                            Text("Office: ${appConfig.grievanceOfficerAddress}", fontSize = 11.sp, color = EarthInkSecondary)
+                            if (appConfig.nodalOfficerName.isNotBlank()) {
+                                Text("Nodal Officer: ${appConfig.nodalOfficerName} (${appConfig.nodalOfficerContact})", fontSize = 11.sp, color = EarthInkSecondary)
+                            }
+                            Text(
+                                text = "Entity: ${appConfig.legalEntityName}" + if (appConfig.gstinNumber.isNotBlank()) " • GSTIN: ${appConfig.gstinNumber}" else "",
+                                fontSize = 11.sp,
+                                color = EarthInkSecondary
+                            )
+                        }
+                    }
+                } else {
+                    // Release Blocker Notice for real statutory Officer Credentials
+                    Surface(
+                        color = EarthWarnSurface,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, EarthWarnInk.copy(alpha = 0.4f))
+                    ) {
+                        Row(modifier = Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = EarthWarnInk, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "Release Blocker Notice: Formal Grievance Officer & Nodal Officer legal name, Indian office address, official phone/email & GSTIN must be entered by Business Owner & verified by Legal Counsel prior to Google Play production launch.",
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                color = EarthWarnInk,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 

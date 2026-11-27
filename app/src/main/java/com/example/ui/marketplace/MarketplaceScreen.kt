@@ -63,7 +63,9 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -108,9 +110,11 @@ import com.example.data.model.NurseryApplication
 import com.example.data.model.NurseryApplicationStatus
 import com.example.data.remote.NurseryApplicationRepository
 import com.example.data.repository.TrustAndSafetyRepository
+import com.example.ui.components.OfflineModeBanner
 import com.example.ui.trust.AntiFraudWarningBanner
 import com.example.ui.trust.FraudReportDialog
 import com.example.ui.trust.SellerTierBadge
+import com.example.util.NetworkConnectivityMonitor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -223,6 +227,30 @@ fun MarketplaceScreen(
     val nurseryApps by nurseryAppRepo.allApplicationsFlow.collectAsState(initial = emptyList())
     val suspendedSellerIds by trustRepo.observeSuspendedSellerIds().collectAsState(initial = emptySet())
 
+    val networkStatus by NetworkConnectivityMonitor.status.collectAsState()
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSyncing by remember { mutableStateOf(false) }
+
+    fun refreshFromCloud() {
+        if (!UserSessionManager.hasCloudFirebaseSession(context)) return
+        isSyncing = true
+        syncErrorMessage = null
+        coroutineScope.launch {
+            val res = nurseryProductRepo.pullFromFirestore(
+                sellerUserId = "",
+                isAdmin = UserSessionManager.isAdmin(context)
+            )
+            isSyncing = false
+            if (res.isFailure) {
+                syncErrorMessage = res.exceptionOrNull()?.localizedMessage ?: "Cloud sync failed"
+            }
+        }
+    }
+
+    LaunchedEffect(userId) {
+        refreshFromCloud()
+    }
+
     var orderingProduct by remember { mutableStateOf<NurseryProduct?>(null) }
     var viewingSellerProfile by remember { mutableStateOf<NurseryProduct?>(null) }
     var reportingProduct by remember { mutableStateOf<NurseryProduct?>(null) }
@@ -277,6 +305,41 @@ fun MarketplaceScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            if (!networkStatus.isOnline) {
+                OfflineModeBanner(
+                    language = currentLanguage,
+                    onRetryCheck = {
+                        NetworkConnectivityMonitor.refreshNow(context)
+                        refreshFromCloud()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            } else if (!syncErrorMessage.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("marketplace_sync_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = syncErrorMessage ?: "",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { refreshFromCloud() }, enabled = !isSyncing) {
+                            Text(L10n.t("net_retry_btn", currentLanguage))
+                        }
+                    }
+                }
+            }
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),

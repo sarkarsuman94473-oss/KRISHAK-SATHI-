@@ -30,10 +30,12 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Button
@@ -417,7 +419,9 @@ fun AiMessageUtilityBar(
     onCopy: () -> Unit,
     onShare: () -> Unit,
     onRetry: (() -> Unit)? = null,
-    onFeedback: (Boolean) -> Unit
+    onFeedback: (Boolean) -> Unit,
+    isSpeaking: Boolean = false,
+    onToggleSpeak: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -425,6 +429,21 @@ fun AiMessageUtilityBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onToggleSpeak != null) {
+                IconButton(
+                    onClick = onToggleSpeak,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("ai_tts_btn_$messageId")
+                ) {
+                    Icon(
+                        imageVector = if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                        contentDescription = if (isSpeaking) "Stop Reading" else "Read Aloud",
+                        tint = if (isSpeaking) RoyalSoftGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
             IconButton(
                 onClick = onCopy,
                 modifier = Modifier

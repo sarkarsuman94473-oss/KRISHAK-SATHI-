@@ -67,7 +67,13 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       all {
-        it.maxHeapSize = "2048m"
+        it.maxHeapSize = "1280m"
+        val cachedSdkDir = file("/home/appuser/.m2/repository/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7")
+        if (cachedSdkDir.exists()) {
+          it.systemProperty("user.home", "/home/appuser")
+          it.systemProperty("robolectric.offline", "true")
+          it.systemProperty("robolectric.dependency.dir", cachedSdkDir.absolutePath)
+        }
       }
     }
   }
@@ -110,6 +116,9 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.ui)
+  implementation(libs.androidx.media3.common)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)

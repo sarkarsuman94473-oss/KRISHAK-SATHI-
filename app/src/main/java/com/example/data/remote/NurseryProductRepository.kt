@@ -9,13 +9,17 @@ import com.example.data.model.NurseryOrderItem
 import com.example.data.model.NurseryProduct
 import com.example.data.model.NurseryProductCategory
 import com.example.data.model.SellerDashboardMetrics
+import com.example.data.local.session.UserSessionManager
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
@@ -83,14 +87,14 @@ class NurseryProductRepository(private val context: Context) {
     }
 
     // -------------------------------------------------------------
-    // Seller Specific Queries & Analytics
+    // Seller Specific Queries & Analytics (Strict Tenant Isolation)
     // -------------------------------------------------------------
 
     fun observeProductsBySeller(sellerUserId: String): Flow<List<NurseryProduct>> {
+        val cleanId = sellerUserId.trim()
         return _productsFlow.asStateFlow().map { list ->
-            // If seller has products, return them; otherwise match any fallback demo seller
-            val matched = list.filter { it.sellerUserId == sellerUserId }
-            if (matched.isNotEmpty()) matched else list
+            if (cleanId.isBlank()) emptyList()
+            else list.filter { it.sellerUserId == cleanId }
         }
     }
 
@@ -101,16 +105,19 @@ class NurseryProductRepository(private val context: Context) {
     }
 
     fun observeOrdersForSeller(sellerUserId: String): Flow<List<NurseryOrder>> {
+        val cleanId = sellerUserId.trim()
         return _ordersFlow.asStateFlow().map { list ->
-            val matched = list.filter { it.sellerUserId == sellerUserId }
-            if (matched.isNotEmpty()) matched else list
+            if (cleanId.isBlank()) emptyList()
+            else list.filter { it.sellerUserId == cleanId }
         }
     }
 
     fun getMetricsForSeller(sellerUserId: String): Flow<SellerDashboardMetrics> {
-        return _productsFlow.asStateFlow().map { products ->
-            val sellerProducts = products.filter { it.sellerUserId == sellerUserId || products.size <= 8 }
-            val orders = _ordersFlow.value.filter { it.sellerUserId == sellerUserId || _ordersFlow.value.size <= 4 }
+        val cleanId = sellerUserId.trim()
+        return combine(_productsFlow.asStateFlow(), _ordersFlow.asStateFlow()) { products, allOrders ->
+            if (cleanId.isBlank()) return@combine SellerDashboardMetrics()
+            val sellerProducts = products.filter { it.sellerUserId == cleanId }
+            val orders = allOrders.filter { it.sellerUserId == cleanId }
 
             val totalProducts = sellerProducts.size
             val activeProducts = sellerProducts.count { it.status == "ACTIVE" && it.freeStock > 0 }
@@ -134,6 +141,18 @@ class NurseryProductRepository(private val context: Context) {
         }
     }
 
+    private fun isCurrentFirebaseAdmin(): Boolean {
+        return runCatching {
+            Firebase.auth.currentUser?.email?.trim()?.equals(UserSessionManager.ADMIN_EMAIL, ignoreCase = true) == true
+        }.getOrDefault(false)
+    }
+
+    private fun sanitizeImagesForCloud(images: List<String>): List<String> {
+        return images
+            .map { it.trim() }
+            .filter { it.isNotBlank() && !it.startsWith("content://") && !it.startsWith("file://") }
+    }
+
     // -------------------------------------------------------------
     // Product Management (CRUD & Stock Operations)
     // -------------------------------------------------------------
@@ -152,6 +171,9 @@ class NurseryProductRepository(private val context: Context) {
                     AppLanguage.ENGLISH -> "Only approved nursery partners can publish commercial plant listings"
                 }
                 return Result.failure(SecurityException(msg))
+            }
+            if (sellerUserId.isBlank()) {
+                return Result.failure(SecurityException("Seller account required"))
             }
             if (product.productName.isBlank()) {
                 val msg = when (lang) {
@@ -173,21 +195,28 @@ class NurseryProductRepository(private val context: Context) {
             val finalProduct = product.copy(
                 id = finalId,
                 sellerUserId = sellerUserId,
-                isApproved = true, // Sellers approved in Phase 2 have auto-listing
+                isApproved = true,
                 status = if (product.availableStock > 0) "ACTIVE" else "OUT_OF_STOCK",
                 createdAtMillis = System.currentTimeMillis(),
                 updatedAtMillis = System.currentTimeMillis()
             )
 
-            val currentList = _productsFlow.value.toMutableList()
+            val previousList = _productsFlow.value
+            val currentList = previousList.toMutableList()
             currentList.add(0, finalProduct)
             _productsFlow.value = currentList
             saveProductsToDisk(currentList)
 
-            // Sync to Firestore
-            syncProductToFirestore(finalProduct)
+            val syncRes = syncProductToFirestore(finalProduct)
+            if (syncRes.isFailure) {
+                _productsFlow.value = previousList
+                saveProductsToDisk(previousList)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+            }
 
             Result.success(finalId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -195,7 +224,8 @@ class NurseryProductRepository(private val context: Context) {
 
     suspend fun updateProduct(product: NurseryProduct, sellerUserId: String, lang: AppLanguage = AppLanguage.BENGALI): Result<Unit> {
         return try {
-            val currentList = _productsFlow.value.toMutableList()
+            val previousList = _productsFlow.value
+            val currentList = previousList.toMutableList()
             val index = currentList.indexOfFirst { it.id == product.id }
             if (index < 0) {
                 val msg = when (lang) {
@@ -206,9 +236,8 @@ class NurseryProductRepository(private val context: Context) {
                 return Result.failure(NoSuchElementException(msg))
             }
 
-            // Security check
             val existing = currentList[index]
-            if (existing.sellerUserId.isNotBlank() && existing.sellerUserId != sellerUserId) {
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
                 val msg = when (lang) {
                     AppLanguage.BENGALI -> "অন্য নার্সারির পণ্য সম্পাদনা করার অনুমতি নেই"
                     AppLanguage.HINDI -> "किसी अन्य नर्सरी का उत्पाद संपादित करने की अनुमति नहीं है"
@@ -228,8 +257,15 @@ class NurseryProductRepository(private val context: Context) {
             _productsFlow.value = currentList
             saveProductsToDisk(currentList)
 
-            syncProductToFirestore(updated)
+            val syncRes = syncProductToFirestore(updated)
+            if (syncRes.isFailure) {
+                _productsFlow.value = previousList
+                saveProductsToDisk(previousList)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
+            }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -237,29 +273,42 @@ class NurseryProductRepository(private val context: Context) {
 
     suspend fun deleteProduct(productId: String, sellerUserId: String, lang: AppLanguage = AppLanguage.BENGALI): Result<Unit> {
         return try {
-            val currentList = _productsFlow.value.toMutableList()
+            val previousList = _productsFlow.value
+            val currentList = previousList.toMutableList()
             val index = currentList.indexOfFirst { it.id == productId }
-            if (index >= 0) {
-                val existing = currentList[index]
-                if (existing.sellerUserId.isNotBlank() && existing.sellerUserId != sellerUserId) {
-                    val msg = when (lang) {
-                        AppLanguage.BENGALI -> "অনুমতি নেই"
-                        AppLanguage.HINDI -> "अनुमति नहीं है"
-                        AppLanguage.ENGLISH -> "Permission denied"
-                    }
-                    return Result.failure(SecurityException(msg))
+            if (index < 0) {
+                return Result.failure(NoSuchElementException("Product not found"))
+            }
+            val existing = currentList[index]
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
+                val msg = when (lang) {
+                    AppLanguage.BENGALI -> "অনুমতি নেই"
+                    AppLanguage.HINDI -> "अनुमति नहीं है"
+                    AppLanguage.ENGLISH -> "Permission denied"
                 }
-                currentList.removeAt(index)
-                _productsFlow.value = currentList
-                saveProductsToDisk(currentList)
+                return Result.failure(SecurityException(msg))
+            }
+            currentList.removeAt(index)
+            _productsFlow.value = currentList
+            saveProductsToDisk(currentList)
 
+            val firestore = db
+            val authUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+            if (firestore != null && authUser != null) {
                 try {
-                    db?.collection("nursery_products")?.document(productId)?.delete()?.await()
+                    firestore.collection("nursery_products").document(productId).delete().await()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
+                    _productsFlow.value = previousList
+                    saveProductsToDisk(previousList)
                     Log.e(TAG, "Error deleting product from Firestore: ${e.message}")
+                    return Result.failure(e)
                 }
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -273,24 +322,42 @@ class NurseryProductRepository(private val context: Context) {
         newStock: Int
     ): Result<Unit> {
         return try {
-            val currentList = _productsFlow.value.toMutableList()
+            if (regularPrice <= 0.0 || newStock < 0) {
+                return Result.failure(IllegalArgumentException("Price must be > 0 and stock cannot be negative"))
+            }
+            if (discountPrice != null && (discountPrice <= 0.0 || discountPrice > regularPrice)) {
+                return Result.failure(IllegalArgumentException("Discount price must be > 0 and <= regular price"))
+            }
+            val previousList = _productsFlow.value
+            val currentList = previousList.toMutableList()
             val index = currentList.indexOfFirst { it.id == productId }
-            if (index >= 0) {
-                val existing = currentList[index]
-                val updatedStatus = if (newStock > 0) "ACTIVE" else "OUT_OF_STOCK"
-                val updated = existing.copy(
-                    regularPrice = regularPrice,
-                    discountPrice = discountPrice,
-                    availableStock = newStock,
-                    status = updatedStatus,
-                    updatedAtMillis = System.currentTimeMillis()
-                )
-                currentList[index] = updated
-                _productsFlow.value = currentList
-                saveProductsToDisk(currentList)
-                syncProductToFirestore(updated)
+            if (index < 0) {
+                return Result.failure(NoSuchElementException("Product not found"))
+            }
+            val existing = currentList[index]
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
+                return Result.failure(SecurityException("Not authorized to update another nursery's stock"))
+            }
+            val updatedStatus = if (newStock > 0) "ACTIVE" else "OUT_OF_STOCK"
+            val updated = existing.copy(
+                regularPrice = regularPrice,
+                discountPrice = discountPrice,
+                availableStock = newStock,
+                status = updatedStatus,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+            currentList[index] = updated
+            _productsFlow.value = currentList
+            saveProductsToDisk(currentList)
+            val syncRes = syncProductToFirestore(updated)
+            if (syncRes.isFailure) {
+                _productsFlow.value = previousList
+                saveProductsToDisk(previousList)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -298,20 +365,32 @@ class NurseryProductRepository(private val context: Context) {
 
     suspend fun toggleStockStatus(productId: String, sellerUserId: String, isOutOfStock: Boolean): Result<Unit> {
         return try {
-            val currentList = _productsFlow.value.toMutableList()
+            val previousList = _productsFlow.value
+            val currentList = previousList.toMutableList()
             val index = currentList.indexOfFirst { it.id == productId }
-            if (index >= 0) {
-                val existing = currentList[index]
-                val updated = existing.copy(
-                    status = if (isOutOfStock) "OUT_OF_STOCK" else "ACTIVE",
-                    updatedAtMillis = System.currentTimeMillis()
-                )
-                currentList[index] = updated
-                _productsFlow.value = currentList
-                saveProductsToDisk(currentList)
-                syncProductToFirestore(updated)
+            if (index < 0) {
+                return Result.failure(NoSuchElementException("Product not found"))
+            }
+            val existing = currentList[index]
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
+                return Result.failure(SecurityException("Not authorized to change another nursery's product status"))
+            }
+            val updated = existing.copy(
+                status = if (isOutOfStock) "OUT_OF_STOCK" else "ACTIVE",
+                updatedAtMillis = System.currentTimeMillis()
+            )
+            currentList[index] = updated
+            _productsFlow.value = currentList
+            saveProductsToDisk(currentList)
+            val syncRes = syncProductToFirestore(updated)
+            if (syncRes.isFailure) {
+                _productsFlow.value = previousList
+                saveProductsToDisk(previousList)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -326,9 +405,11 @@ class NurseryProductRepository(private val context: Context) {
      * Prevents overselling when stock is insufficient.
      */
     suspend fun placeCustomerOrder(order: NurseryOrder, lang: AppLanguage = AppLanguage.BENGALI): Result<NurseryOrder> {
+        val previousProducts = _productsFlow.value
+        val previousOrders = _ordersFlow.value
         val affectedProducts = mutableListOf<NurseryProduct>()
         val finalOrder: NurseryOrder = synchronized(this) {
-            val productsList = _productsFlow.value.toMutableList()
+            val productsList = previousProducts.toMutableList()
 
             // Step 1: Verify all items have sufficient available stock
             for (item in order.items) {
@@ -380,7 +461,7 @@ class NurseryProductRepository(private val context: Context) {
                 updatedDateMillis = System.currentTimeMillis()
             )
 
-            val ordersList = _ordersFlow.value.toMutableList()
+            val ordersList = previousOrders.toMutableList()
             ordersList.add(0, ord)
             _ordersFlow.value = ordersList
             saveOrdersToDisk(ordersList)
@@ -388,29 +469,56 @@ class NurseryProductRepository(private val context: Context) {
             ord
         }
 
-        for (p in affectedProducts) {
-            syncProductToFirestore(p)
+        val orderSyncRes = syncOrderToFirestore(finalOrder)
+        if (orderSyncRes.isFailure) {
+            _productsFlow.value = previousProducts
+            saveProductsToDisk(previousProducts)
+            _ordersFlow.value = previousOrders
+            saveOrdersToDisk(previousOrders)
+            return Result.failure(orderSyncRes.exceptionOrNull() ?: IllegalStateException("Order cloud sync failed"))
         }
-        syncOrderToFirestore(finalOrder)
+
+        for (p in affectedProducts) {
+            val prodSync = syncProductToFirestore(p)
+            if (prodSync.isFailure) {
+                Log.w(TAG, "Product stock cloud update deferred for ${p.id}: ${prodSync.exceptionOrNull()?.message}")
+            }
+        }
 
         return Result.success(finalOrder)
     }
 
     suspend fun acceptOrder(orderId: String, sellerUserId: String): Result<Unit> {
         return try {
-            val ordersList = _ordersFlow.value.toMutableList()
+            val previousOrders = _ordersFlow.value
+            val ordersList = previousOrders.toMutableList()
             val index = ordersList.indexOfFirst { it.id == orderId }
-            if (index >= 0) {
-                val updated = ordersList[index].copy(
-                    status = "ACCEPTED",
-                    updatedDateMillis = System.currentTimeMillis()
-                )
-                ordersList[index] = updated
-                _ordersFlow.value = ordersList
-                saveOrdersToDisk(ordersList)
-                syncOrderToFirestore(updated)
+            if (index < 0) {
+                return Result.failure(NoSuchElementException("Order not found"))
+            }
+            val existing = ordersList[index]
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
+                return Result.failure(SecurityException("Not authorized to accept another seller's order"))
+            }
+            if (existing.status != "NEW") {
+                return Result.failure(IllegalStateException("Only NEW orders can be accepted"))
+            }
+            val updated = existing.copy(
+                status = "ACCEPTED",
+                updatedDateMillis = System.currentTimeMillis()
+            )
+            ordersList[index] = updated
+            _ordersFlow.value = ordersList
+            saveOrdersToDisk(ordersList)
+            val syncRes = syncOrderToFirestore(updated)
+            if (syncRes.isFailure) {
+                _ordersFlow.value = previousOrders
+                saveOrdersToDisk(previousOrders)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -418,19 +526,35 @@ class NurseryProductRepository(private val context: Context) {
 
     suspend fun completeOrder(orderId: String, sellerUserId: String): Result<Unit> {
         return try {
-            val ordersList = _ordersFlow.value.toMutableList()
+            val previousOrders = _ordersFlow.value
+            val ordersList = previousOrders.toMutableList()
             val index = ordersList.indexOfFirst { it.id == orderId }
-            if (index >= 0) {
-                val updated = ordersList[index].copy(
-                    status = "COMPLETED",
-                    updatedDateMillis = System.currentTimeMillis()
-                )
-                ordersList[index] = updated
-                _ordersFlow.value = ordersList
-                saveOrdersToDisk(ordersList)
-                syncOrderToFirestore(updated)
+            if (index < 0) {
+                return Result.failure(NoSuchElementException("Order not found"))
+            }
+            val existing = ordersList[index]
+            if (existing.sellerUserId != sellerUserId && !isCurrentFirebaseAdmin()) {
+                return Result.failure(SecurityException("Not authorized to complete another seller's order"))
+            }
+            if (existing.status !in listOf("NEW", "ACCEPTED", "DISPATCHED")) {
+                return Result.failure(IllegalStateException("Order cannot be completed from status ${existing.status}"))
+            }
+            val updated = existing.copy(
+                status = "COMPLETED",
+                updatedDateMillis = System.currentTimeMillis()
+            )
+            ordersList[index] = updated
+            _ordersFlow.value = ordersList
+            saveOrdersToDisk(ordersList)
+            val syncRes = syncOrderToFirestore(updated)
+            if (syncRes.isFailure) {
+                _ordersFlow.value = previousOrders
+                saveOrdersToDisk(previousOrders)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -439,20 +563,37 @@ class NurseryProductRepository(private val context: Context) {
     /**
      * Cancels an order and automatically RESTORES the deducted stock back to the products.
      */
-    suspend fun cancelOrderAndRestoreStock(orderId: String, reason: String = "", lang: AppLanguage = AppLanguage.BENGALI): Result<Unit> {
+    suspend fun cancelOrderAndRestoreStock(
+        orderId: String,
+        reason: String = "",
+        lang: AppLanguage = AppLanguage.BENGALI,
+        actorUserId: String = ""
+    ): Result<Unit> {
+        val previousProducts = _productsFlow.value
+        val previousOrders = _ordersFlow.value
         val restoredProducts = mutableListOf<NurseryProduct>()
         val updatedOrder: NurseryOrder? = synchronized(this) {
-            val ordersList = _ordersFlow.value.toMutableList()
+            val ordersList = previousOrders.toMutableList()
             val oIndex = ordersList.indexOfFirst { it.id == orderId }
             if (oIndex < 0) return Result.failure(NoSuchElementException("Order not found"))
 
             val order = ordersList[oIndex]
+            if (actorUserId.isNotBlank() &&
+                order.sellerUserId != actorUserId &&
+                order.customerId != actorUserId &&
+                !isCurrentFirebaseAdmin()
+            ) {
+                return Result.failure(SecurityException("Not authorized to cancel this order"))
+            }
+            if (order.status == "COMPLETED") {
+                return Result.failure(IllegalStateException("Completed orders cannot be cancelled"))
+            }
             if (order.status == "CANCELLED") {
-                return Result.success(Unit) // Already cancelled
+                return Result.success(Unit)
             }
 
             // Restore stock back to products
-            val productsList = _productsFlow.value.toMutableList()
+            val productsList = previousProducts.toMutableList()
             for (item in order.items) {
                 val pIndex = productsList.indexOfFirst { it.id == item.productId }
                 if (pIndex >= 0) {
@@ -489,77 +630,263 @@ class NurseryProductRepository(private val context: Context) {
         }
 
         if (updatedOrder != null) {
-            for (p in restoredProducts) {
-                syncProductToFirestore(p)
+            val syncRes = syncOrderToFirestore(updatedOrder)
+            if (syncRes.isFailure) {
+                _productsFlow.value = previousProducts
+                saveProductsToDisk(previousProducts)
+                _ordersFlow.value = previousOrders
+                saveOrdersToDisk(previousOrders)
+                return Result.failure(syncRes.exceptionOrNull() ?: IllegalStateException("Cloud sync failed"))
             }
-            syncOrderToFirestore(updatedOrder)
+            for (p in restoredProducts) {
+                val prodRes = syncProductToFirestore(p)
+                if (prodRes.isFailure) {
+                    Log.w(TAG, "Product restore sync deferred for ${p.id}: ${prodRes.exceptionOrNull()?.message}")
+                }
+            }
         }
 
         return Result.success(Unit)
     }
 
     // -------------------------------------------------------------
-    // Firestore Sync
+    // Firestore Bidirectional Sync
     // -------------------------------------------------------------
 
-    private suspend fun syncProductToFirestore(p: NurseryProduct) {
-        try {
-            if (db != null && Firebase.auth.currentUser != null) {
-                val payload = hashMapOf<String, Any>(
-                    "id" to p.id,
-                    "nurseryId" to p.nurseryId,
-                    "nurseryName" to p.nurseryName,
-                    "sellerUserId" to p.sellerUserId,
-                    "productName" to p.productName,
-                    "category" to p.category,
-                    "images" to p.images,
-                    "description" to p.description,
-                    "regularPrice" to p.regularPrice,
-                    "discountPrice" to (p.discountPrice ?: 0.0),
-                    "availableStock" to p.availableStock,
-                    "reservedStock" to p.reservedStock,
-                    "plantSize" to p.plantSize,
-                    "plantType" to p.plantType,
-                    "plantCareInstructions" to p.plantCareInstructions,
-                    "deliveryAvailable" to p.deliveryAvailable,
-                    "deliveryRadiusKm" to p.deliveryRadiusKm,
-                    "productLocation" to p.productLocation,
-                    "isApproved" to p.isApproved,
-                    "status" to p.status,
-                    "linkedPlantId" to p.linkedPlantId,
-                    "createdAtMillis" to p.createdAtMillis,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-                db?.collection("nursery_products")?.document(p.id)?.set(payload)?.await()
+    suspend fun pullFromFirestore(sellerUserId: String = "", isAdmin: Boolean = false): Result<Int> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore unavailable"))
+        val authUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+            ?: return Result.failure(IllegalStateException("Google Sign-In required for cloud sync"))
+        return try {
+            var syncedCount = 0
+
+            val productDocs = mutableMapOf<String, DocumentSnapshot>()
+            val publicSnap = firestore.collection("nursery_products")
+                .whereEqualTo("isApproved", true)
+                .get()
+                .await()
+            publicSnap.documents.forEach { productDocs[it.id] = it }
+
+            val targetSellerId = sellerUserId.trim().ifBlank { authUser.uid }
+            if (targetSellerId.isNotBlank()) {
+                runCatching {
+                    val sellerSnap = firestore.collection("nursery_products")
+                        .whereEqualTo("sellerUserId", targetSellerId)
+                        .get()
+                        .await()
+                    sellerSnap.documents.forEach { productDocs[it.id] = it }
+                }
             }
+
+            if (productDocs.isNotEmpty()) {
+                val mergedProducts = _productsFlow.value.associateBy { it.id }.toMutableMap()
+                productDocs.values.forEach { doc ->
+                    docToProduct(doc)?.let { prod ->
+                        mergedProducts[prod.id] = prod
+                        syncedCount++
+                    }
+                }
+                val finalProducts = mergedProducts.values.sortedByDescending { it.updatedAtMillis }
+                _productsFlow.value = finalProducts
+                saveProductsToDisk(finalProducts)
+            }
+
+            val orderDocs = mutableMapOf<String, DocumentSnapshot>()
+            if (isAdmin && isCurrentFirebaseAdmin()) {
+                val allOrdersSnap = firestore.collection("nursery_orders").get().await()
+                allOrdersSnap.documents.forEach { orderDocs[it.id] = it }
+            } else {
+                if (targetSellerId.isNotBlank()) {
+                    runCatching {
+                        val sellerOrdersSnap = firestore.collection("nursery_orders")
+                            .whereEqualTo("sellerUserId", targetSellerId)
+                            .get()
+                            .await()
+                        sellerOrdersSnap.documents.forEach { orderDocs[it.id] = it }
+                    }
+                }
+                runCatching {
+                    val customerOrdersSnap = firestore.collection("nursery_orders")
+                        .whereEqualTo("customerId", authUser.uid)
+                        .get()
+                        .await()
+                    customerOrdersSnap.documents.forEach { orderDocs[it.id] = it }
+                }
+            }
+
+            if (orderDocs.isNotEmpty()) {
+                val mergedOrders = _ordersFlow.value.associateBy { it.id }.toMutableMap()
+                orderDocs.values.forEach { doc ->
+                    docToOrder(doc)?.let { ord ->
+                        mergedOrders[ord.id] = ord
+                        syncedCount++
+                    }
+                }
+                val finalOrders = mergedOrders.values.sortedByDescending { it.updatedDateMillis }
+                _ordersFlow.value = finalOrders
+                saveOrdersToDisk(finalOrders)
+            }
+
+            Result.success(syncedCount)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Firestore sync product error: ${e.message}")
+            Log.e(TAG, "Firestore pullFromFirestore failed: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    private suspend fun syncOrderToFirestore(o: NurseryOrder) {
-        try {
-            if (db != null && Firebase.auth.currentUser != null) {
-                val payload = hashMapOf<String, Any>(
-                    "id" to o.id,
-                    "orderNumber" to o.orderNumber,
-                    "nurseryId" to o.nurseryId,
-                    "nurseryName" to o.nurseryName,
-                    "sellerUserId" to o.sellerUserId,
-                    "customerId" to o.customerId,
-                    "customerName" to o.customerName,
-                    "customerPhone" to o.customerPhone,
-                    "deliveryAddress" to o.deliveryAddress,
-                    "totalAmount" to o.totalAmount,
-                    "status" to o.status,
-                    "paymentMethod" to o.paymentMethod,
-                    "orderDateMillis" to o.orderDateMillis,
-                    "updatedAt" to FieldValue.serverTimestamp()
+    private fun docToProduct(doc: DocumentSnapshot): NurseryProduct? {
+        val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
+        val name = doc.getString("productName")?.takeIf { it.isNotBlank() } ?: return null
+        val imgs = (doc.get("images") as? List<*>)
+            ?.mapNotNull { it?.toString()?.trim() }
+            ?.filter { it.isNotBlank() && !it.startsWith("content://") && !it.startsWith("file://") }
+            ?: emptyList()
+        val rawDiscount = doc.getDouble("discountPrice")?.takeIf { it > 0.0 }
+        return NurseryProduct(
+            id = id,
+            nurseryId = doc.getString("nurseryId").orEmpty(),
+            nurseryName = doc.getString("nurseryName").orEmpty(),
+            sellerUserId = doc.getString("sellerUserId").orEmpty(),
+            productName = name,
+            category = doc.getString("category") ?: NurseryProductCategory.FRUIT_PLANTS.code,
+            images = imgs,
+            description = doc.getString("description").orEmpty(),
+            regularPrice = doc.getDouble("regularPrice") ?: 0.0,
+            discountPrice = rawDiscount,
+            availableStock = (doc.getLong("availableStock") ?: 0L).toInt(),
+            reservedStock = (doc.getLong("reservedStock") ?: 0L).toInt(),
+            plantSize = doc.getString("plantSize") ?: "1-2 ft",
+            plantType = doc.getString("plantType") ?: "Grafted",
+            plantCareInstructions = doc.getString("plantCareInstructions").orEmpty(),
+            deliveryAvailable = doc.getBoolean("deliveryAvailable") ?: true,
+            deliveryRadiusKm = (doc.getLong("deliveryRadiusKm") ?: 30L).toInt(),
+            productLocation = doc.getString("productLocation").orEmpty(),
+            isApproved = doc.getBoolean("isApproved") ?: true,
+            status = doc.getString("status") ?: "ACTIVE",
+            linkedPlantId = doc.getString("linkedPlantId").orEmpty(),
+            createdAtMillis = doc.getLong("createdAtMillis") ?: System.currentTimeMillis(),
+            updatedAtMillis = doc.getLong("updatedAtMillis") ?: System.currentTimeMillis()
+        )
+    }
+
+    private fun docToOrder(doc: DocumentSnapshot): NurseryOrder? {
+        val id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id
+        val rawItems = (doc.get("items") as? List<*>)?.mapNotNull { entry ->
+            val m = entry as? Map<*, *> ?: return@mapNotNull null
+            NurseryOrderItem(
+                productId = m["productId"]?.toString().orEmpty(),
+                productName = m["productName"]?.toString().orEmpty(),
+                category = m["category"]?.toString().orEmpty(),
+                quantity = (m["quantity"] as? Number)?.toInt() ?: 1,
+                unitPrice = (m["unitPrice"] as? Number)?.toDouble() ?: 0.0,
+                totalPrice = (m["totalPrice"] as? Number)?.toDouble() ?: 0.0
+            )
+        } ?: emptyList()
+        return NurseryOrder(
+            id = id,
+            orderNumber = doc.getString("orderNumber") ?: id,
+            nurseryId = doc.getString("nurseryId").orEmpty(),
+            nurseryName = doc.getString("nurseryName").orEmpty(),
+            sellerUserId = doc.getString("sellerUserId").orEmpty(),
+            customerId = doc.getString("customerId").orEmpty(),
+            customerName = doc.getString("customerName").orEmpty(),
+            customerPhone = doc.getString("customerPhone").orEmpty(),
+            deliveryAddress = doc.getString("deliveryAddress").orEmpty(),
+            items = rawItems,
+            totalAmount = doc.getDouble("totalAmount") ?: 0.0,
+            status = doc.getString("status") ?: "NEW",
+            paymentMethod = doc.getString("paymentMethod") ?: "CASH_ON_DELIVERY",
+            orderDateMillis = doc.getLong("orderDateMillis") ?: System.currentTimeMillis(),
+            updatedDateMillis = doc.getLong("updatedDateMillis") ?: System.currentTimeMillis(),
+            notes = doc.getString("notes").orEmpty()
+        )
+    }
+
+    private suspend fun syncProductToFirestore(p: NurseryProduct): Result<Unit> {
+        val firestore = db ?: return Result.success(Unit)
+        val authUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+            ?: return Result.success(Unit)
+        return try {
+            val cloudImages = sanitizeImagesForCloud(p.images)
+            val payload = hashMapOf<String, Any>(
+                "id" to p.id,
+                "nurseryId" to p.nurseryId,
+                "nurseryName" to p.nurseryName,
+                "sellerUserId" to p.sellerUserId.ifBlank { authUser.uid },
+                "productName" to p.productName,
+                "category" to p.category,
+                "images" to cloudImages,
+                "description" to p.description,
+                "regularPrice" to p.regularPrice,
+                "discountPrice" to (p.discountPrice ?: 0.0),
+                "availableStock" to p.availableStock,
+                "reservedStock" to p.reservedStock,
+                "plantSize" to p.plantSize,
+                "plantType" to p.plantType,
+                "plantCareInstructions" to p.plantCareInstructions,
+                "deliveryAvailable" to p.deliveryAvailable,
+                "deliveryRadiusKm" to p.deliveryRadiusKm,
+                "productLocation" to p.productLocation,
+                "isApproved" to p.isApproved,
+                "status" to p.status,
+                "linkedPlantId" to p.linkedPlantId,
+                "createdAtMillis" to p.createdAtMillis,
+                "updatedAtMillis" to p.updatedAtMillis,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            firestore.collection("nursery_products").document(p.id).set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Firestore sync product error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun syncOrderToFirestore(o: NurseryOrder): Result<Unit> {
+        val firestore = db ?: return Result.success(Unit)
+        val authUser = runCatching { Firebase.auth.currentUser }.getOrNull()
+            ?: return Result.success(Unit)
+        return try {
+            val serializedItems = o.items.map { item ->
+                hashMapOf<String, Any>(
+                    "productId" to item.productId,
+                    "productName" to item.productName,
+                    "category" to item.category,
+                    "quantity" to item.quantity,
+                    "unitPrice" to item.unitPrice,
+                    "totalPrice" to item.totalPrice
                 )
-                db?.collection("nursery_orders")?.document(o.id)?.set(payload)?.await()
             }
+            val payload = hashMapOf<String, Any>(
+                "id" to o.id,
+                "orderNumber" to o.orderNumber,
+                "nurseryId" to o.nurseryId,
+                "nurseryName" to o.nurseryName,
+                "sellerUserId" to o.sellerUserId,
+                "customerId" to o.customerId.ifBlank { authUser.uid },
+                "customerName" to o.customerName,
+                "customerPhone" to o.customerPhone,
+                "deliveryAddress" to o.deliveryAddress,
+                "items" to serializedItems,
+                "totalAmount" to o.totalAmount,
+                "status" to o.status,
+                "paymentMethod" to o.paymentMethod,
+                "notes" to o.notes,
+                "orderDateMillis" to o.orderDateMillis,
+                "updatedDateMillis" to o.updatedDateMillis,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            firestore.collection("nursery_orders").document(o.id).set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Firestore sync order error: ${e.message}")
+            Result.failure(e)
         }
     }
 

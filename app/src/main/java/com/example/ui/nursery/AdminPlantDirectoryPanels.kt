@@ -61,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,6 +73,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.datasource.AdminMediaReviewStore
+import com.example.data.datasource.BotanicalPhotoStage
+import com.example.data.datasource.CatalogMediaAuditEngine
+import com.example.data.datasource.MediaVerificationStatus
+import com.example.data.datasource.PlantVarietyAndMediaCatalog
 import com.example.data.model.AppLanguage
 import com.example.data.model.NurseryVerificationStatus
 import com.example.data.model.PlantKingdomEntry
@@ -94,6 +100,7 @@ import com.example.ui.theme.RoyalTextPrimary
 import com.example.ui.theme.RoyalTextSecondary
 import com.example.ui.theme.RoyalWarningBg
 import com.example.ui.theme.RoyalWarningText
+import com.example.util.L10n
 import kotlinx.coroutines.launch
 
 @Composable
@@ -514,6 +521,14 @@ fun AdminPlantKingdomManagementPanel(
         item {
             AdminFirebaseSeedPipelineCard(
                 currentLanguage = currentLanguage,
+                repo = repo
+            )
+        }
+
+        item {
+            AdminMediaAuditAndReviewCard(
+                currentLanguage = currentLanguage,
+                allPlants = allPlants,
                 repo = repo
             )
         }
@@ -1166,4 +1181,188 @@ fun AdminCsvImportUtilityCard(
         }
     }
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AdminMediaAuditAndReviewCard(
+    currentLanguage: AppLanguage,
+    allPlants: List<PlantKingdomEntry>,
+    repo: PlantKingdomRepository
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var reviewNonce by remember { mutableIntStateOf(0) }
+    var pendingTargetPlantId by remember { mutableStateOf<String?>(null) }
+
+    val report = remember(allPlants, reviewNonce) {
+        CatalogMediaAuditEngine.runFullAudit(context = context, plants = allPlants)
+    }
+    val pendingPlantQueue = remember(report) {
+        report.pendingReviewItems.filter { it.recordType == "PLANT_SPECIES" }.take(6)
+    }
+
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val targetId = pendingTargetPlantId
+        pendingTargetPlantId = null
+        if (uri != null && !targetId.isNullOrBlank()) {
+            scope.launch {
+                val uriStr = uri.toString()
+                AdminMediaReviewStore.saveStageReview(
+                    context = context,
+                    plantId = targetId,
+                    stage = BotanicalPhotoStage.YOUNG_SAPLING,
+                    customUri = uriStr,
+                    status = MediaVerificationStatus.VERIFIED
+                )
+                repo.attachPlantPhoto(targetId, uriStr)
+                reviewNonce++
+                Toast.makeText(
+                    context,
+                    "${L10n.t("plant_media_verified", currentLanguage)}: $targetId",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = RoyalGreenCardBg),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_media_audit_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoLibrary,
+                    contentDescription = null,
+                    tint = RoyalSoftGold
+                )
+                Text(
+                    text = L10n.t("plant_admin_media_queue_title", currentLanguage),
+                    fontWeight = FontWeight.Bold,
+                    color = RoyalSoftGold,
+                    fontSize = 14.sp
+                )
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AuditMetricBadge("Plants", "${report.totalPlantsAudited}")
+                AuditMetricBadge("Verified Stages", "${report.verifiedPlantMediaCount}/${report.totalPlantStageSlots}")
+                AuditMetricBadge("Pending Stages", "${report.pendingPlantMediaCount}")
+                AuditMetricBadge("Crops Verified", "${report.verifiedCropsMediaCount}/${report.totalCropsAudited}")
+                AuditMetricBadge("Machinery", "${report.verifiedMachineryMediaCount}/${report.totalMachineryAudited}")
+                AuditMetricBadge("Dashboard Icons", "${report.totalDashboardTilesWithIcons} (Missing: ${report.totalDashboardTilesMissingIcons})")
+                AuditMetricBadge("Cultivars", "${report.totalVarietiesCataloged}")
+            }
+
+            HorizontalDivider(color = RoyalBorder)
+
+            if (pendingPlantQueue.isEmpty()) {
+                Text(
+                    text = L10n.t("plant_media_verified", currentLanguage),
+                    color = RoyalSuccessText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            } else {
+                Text(
+                    text = "${L10n.t("plant_media_pending", currentLanguage)} (${pendingPlantQueue.size} / ${report.pendingPlantMediaCount})",
+                    color = RoyalWarningText,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                pendingPlantQueue.forEach { item ->
+                    Surface(
+                        color = RoyalGreenSecondaryBg,
+                        border = BorderStroke(1.dp, RoyalBorder),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                val title = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> item.titleBn
+                                    AppLanguage.HINDI -> item.titleHi
+                                    AppLanguage.ENGLISH -> item.titleEn
+                                }.ifBlank { item.titleEn }
+                                Text(
+                                    text = title,
+                                    color = RoyalTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    text = "${item.itemId} • ${item.stageCode}",
+                                    color = RoyalTextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    pendingTargetPlantId = item.itemId
+                                    mediaPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                border = BorderStroke(1.dp, RoyalGold),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("admin_verify_photo_${item.itemId}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Verified,
+                                    contentDescription = null,
+                                    tint = RoyalSoftGold,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Verify / Attach Photo",
+                                    fontSize = 11.sp,
+                                    color = RoyalSoftGold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuditMetricBadge(label: String, value: String) {
+    Surface(
+        color = RoyalGreenSecondaryBg,
+        border = BorderStroke(1.dp, RoyalBorder),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = "$label: $value",
+            color = RoyalTextPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
 

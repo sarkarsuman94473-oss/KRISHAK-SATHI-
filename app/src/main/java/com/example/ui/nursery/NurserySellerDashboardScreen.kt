@@ -41,12 +41,15 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.datasource.PlantKingdomCatalog
 import com.example.data.local.session.UserSessionManager
 import com.example.data.model.*
+import com.example.data.remote.MachineryImageStorageManager
 import com.example.data.remote.NurseryApplicationRepository
 import com.example.data.remote.NurseryProductRepository
 import com.example.data.repository.TrustAndSafetyRepository
+import com.example.ui.components.OfflineModeBanner
 import com.example.ui.machinery.MachinerySellerPanel
 import com.example.util.L10n
 import com.example.util.LanguageManager
+import com.example.util.NetworkConnectivityMonitor
 import com.example.util.isCompactNarrowScreen
 import com.example.util.toLocalizedDoubleOrNull
 import com.example.util.toLocalizedIntOrNull
@@ -75,22 +78,50 @@ fun NurserySellerDashboardScreen(
 
     val applications by repository.allApplicationsFlow.collectAsState(initial = emptyList())
     val myNursery = remember(applications, userId) {
-        applications.firstOrNull { it.userId == userId } ?: applications.firstOrNull()
+        applications.firstOrNull { it.userId == userId }
     }
 
     val trustRepo = remember(context) { TrustAndSafetyRepository(context) }
     val suspendedSellerIds by trustRepo.observeSuspendedSellerIds().collectAsState(initial = emptySet())
     val isSellerSuspended = remember(suspendedSellerIds, userId, myNursery) {
-        (userId in suspendedSellerIds) || (myNursery?.id in suspendedSellerIds)
+        (userId in suspendedSellerIds) || (myNursery?.id in suspendedSellerIds) ||
+            (myNursery?.status == NurseryApplicationStatus.SUSPENDED.code)
     }
     var acceptedSellerAgreement by remember {
         mutableStateOf(UserSessionManager.hasAcceptedSellerAgreement(context))
     }
 
-    // Role-based security check
-    val isAdmin = remember { UserSessionManager.isAdmin(context) }
-    val isOwner = remember(myNursery) {
-        UserSessionManager.isNurseryOwner(context) || isAdmin || myNursery?.status == "APPROVED"
+    // Strict Role- & Ownership-based security check (no fallback to unrelated approved nurseries)
+    val isAdmin = remember(userId) { UserSessionManager.isAdmin(context) }
+    val isOwner = remember(myNursery, isAdmin, userId) {
+        isAdmin ||
+            (UserSessionManager.isNurseryOwner(context) && myNursery?.status != NurseryApplicationStatus.REJECTED.code) ||
+            (myNursery != null &&
+                myNursery.userId == userId &&
+                myNursery.status == NurseryApplicationStatus.APPROVED.code)
+    }
+
+    val networkStatus by NetworkConnectivityMonitor.status.collectAsState()
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSyncing by remember { mutableStateOf(false) }
+
+    fun refreshFromCloud() {
+        if (!UserSessionManager.hasCloudFirebaseSession(context)) return
+        isSyncing = true
+        syncErrorMessage = null
+        coroutineScope.launch {
+            val res = productRepo.pullFromFirestore(sellerUserId = userId, isAdmin = isAdmin)
+            isSyncing = false
+            if (res.isFailure) {
+                syncErrorMessage = res.exceptionOrNull()?.localizedMessage ?: "Cloud sync failed"
+            }
+        }
+    }
+
+    LaunchedEffect(userId, isOwner) {
+        if (isOwner && UserSessionManager.hasCloudFirebaseSession(context)) {
+            refreshFromCloud()
+        }
     }
 
     if (!isOwner) {
@@ -329,6 +360,41 @@ fun NurserySellerDashboardScreen(
                 .widthIn(max = 760.dp)
                 .imePadding()
         ) {
+            if (!networkStatus.isOnline) {
+                OfflineModeBanner(
+                    language = currentLanguage,
+                    onRetryCheck = {
+                        NetworkConnectivityMonitor.refreshNow(context)
+                        refreshFromCloud()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            } else if (!syncErrorMessage.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("seller_sync_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = syncErrorMessage ?: "",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { refreshFromCloud() }, enabled = !isSyncing) {
+                            Text(L10n.t("net_retry_btn", currentLanguage))
+                        }
+                    }
+                }
+            }
             if (isSellerSuspended) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -446,7 +512,16 @@ fun NurserySellerDashboardScreen(
                     onQuickUpdate = { quickStockUpdateProduct = it },
                     onToggleStock = { prod, isOutOfStock ->
                         coroutineScope.launch {
-                            productRepo.toggleStockStatus(prod.id, userId, isOutOfStock)
+                            val res = productRepo.toggleStockStatus(prod.id, userId, isOutOfStock)
+                            if (res.isFailure) {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to update stock status",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, L10n.t("toast_stock_updated", currentLanguage), Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     onNavigateToAddProduct = { selectedTab = 2 }
@@ -457,7 +532,16 @@ fun NurserySellerDashboardScreen(
                     onQuickRestock = { prod -> quickStockUpdateProduct = prod },
                     onToggleStock = { prod, isOutOfStock ->
                         coroutineScope.launch {
-                            productRepo.toggleStockStatus(prod.id, userId, isOutOfStock)
+                            val res = productRepo.toggleStockStatus(prod.id, userId, isOutOfStock)
+                            if (res.isFailure) {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to update stock status",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, L10n.t("toast_stock_updated", currentLanguage), Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 )
@@ -466,14 +550,30 @@ fun NurserySellerDashboardScreen(
                     currentLanguage = currentLanguage,
                     onAcceptOrder = { ord ->
                         coroutineScope.launch {
-                            productRepo.acceptOrder(ord.id, userId)
-                            Toast.makeText(context, L10n.t("toast_order_accepted", currentLanguage), Toast.LENGTH_SHORT).show()
+                            val res = productRepo.acceptOrder(ord.id, userId)
+                            if (res.isSuccess) {
+                                Toast.makeText(context, L10n.t("toast_order_accepted", currentLanguage), Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to accept order",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     },
                     onCompleteOrder = { ord ->
                         coroutineScope.launch {
-                            productRepo.completeOrder(ord.id, userId)
-                            Toast.makeText(context, L10n.t("toast_order_completed", currentLanguage), Toast.LENGTH_SHORT).show()
+                            val res = productRepo.completeOrder(ord.id, userId)
+                            if (res.isSuccess) {
+                                Toast.makeText(context, L10n.t("toast_order_completed", currentLanguage), Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to complete order",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     },
                     onCancelOrder = { ord ->
@@ -483,8 +583,21 @@ fun NurserySellerDashboardScreen(
                                 AppLanguage.HINDI -> "विक्रेता द्वारा रद्द"
                                 AppLanguage.ENGLISH -> "Cancelled by Seller"
                             }
-                            productRepo.cancelOrderAndRestoreStock(ord.id, cancelReason, currentLanguage)
-                            Toast.makeText(context, L10n.t("toast_order_cancelled", currentLanguage), Toast.LENGTH_SHORT).show()
+                            val res = productRepo.cancelOrderAndRestoreStock(
+                                orderId = ord.id,
+                                reason = cancelReason,
+                                lang = currentLanguage,
+                                actorUserId = userId
+                            )
+                            if (res.isSuccess) {
+                                Toast.makeText(context, L10n.t("toast_order_cancelled", currentLanguage), Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to cancel order",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     }
                 )
@@ -560,9 +673,17 @@ fun NurserySellerDashboardScreen(
                 Button(
                     onClick = {
                         coroutineScope.launch {
-                            productRepo.deleteProduct(prod.id, userId, currentLanguage)
-                            Toast.makeText(context, L10n.t("toast_product_deleted", currentLanguage), Toast.LENGTH_SHORT).show()
-                            productToDelete = null
+                            val res = productRepo.deleteProduct(prod.id, userId, currentLanguage)
+                            if (res.isSuccess) {
+                                Toast.makeText(context, L10n.t("toast_product_deleted", currentLanguage), Toast.LENGTH_SHORT).show()
+                                productToDelete = null
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res.exceptionOrNull()?.message ?: "Failed to delete product",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -625,9 +746,17 @@ fun NurserySellerDashboardScreen(
                         val stk = editStock.toLocalizedIntOrNull() ?: prod.availableStock
                         coroutineScope.launch {
                             try {
-                                productRepo.updatePriceAndStock(prod.id, userId, regP, discP, stk)
-                                Toast.makeText(context, L10n.t("toast_stock_updated", currentLanguage), Toast.LENGTH_SHORT).show()
-                                quickStockUpdateProduct = null
+                                val res = productRepo.updatePriceAndStock(prod.id, userId, regP, discP, stk)
+                                if (res.isSuccess) {
+                                    Toast.makeText(context, L10n.t("toast_stock_updated", currentLanguage), Toast.LENGTH_SHORT).show()
+                                    quickStockUpdateProduct = null
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        res.exceptionOrNull()?.message ?: "Failed to update price/stock",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
@@ -1103,13 +1232,32 @@ private fun SellerAddProductTab(
         )
     }
 
-    // Multi-Image URLs / Keys + Android Photo Picker (Zero Broad Storage Permission)
+    // Multi-Image Cloud URLs + Android Photo Picker (Zero Broad Storage Permission)
     val imagesList = remember { mutableStateListOf<String>() }
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    var photoUploadError by remember { mutableStateOf<String?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            imagesList.add(uri.toString())
+            isUploadingPhoto = true
+            photoUploadError = null
+            coroutineScope.launch {
+                val uploadRes = MachineryImageStorageManager.uploadNurseryProductPhoto(
+                    context = context,
+                    sellerUserId = sellerUserId,
+                    uri = uri
+                )
+                isUploadingPhoto = false
+                if (uploadRes.isSuccess) {
+                    imagesList.add(uploadRes.getOrThrow().downloadUrl)
+                } else {
+                    val errMsg = uploadRes.exceptionOrNull()?.localizedMessage
+                        ?: "Photo upload requires Google Sign-In and network connection."
+                    photoUploadError = errMsg
+                    Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -1224,6 +1372,7 @@ private fun SellerAddProductTab(
                 }
             }
             TextButton(
+                enabled = !isUploadingPhoto,
                 onClick = {
                     photoPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -1231,10 +1380,23 @@ private fun SellerAddProductTab(
                 },
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
-                Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(L10n.t("btn_add_another_image", currentLanguage), fontSize = 12.sp)
+                if (isUploadingPhoto) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Uploading...", fontSize = 12.sp)
+                } else {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(L10n.t("btn_add_another_image", currentLanguage), fontSize = 12.sp)
+                }
             }
+        }
+        if (!photoUploadError.isNullOrBlank()) {
+            Text(
+                text = photoUploadError ?: "",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         // 4. Product Description

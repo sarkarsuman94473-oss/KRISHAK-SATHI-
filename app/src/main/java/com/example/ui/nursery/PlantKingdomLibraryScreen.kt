@@ -59,17 +59,25 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.datasource.PlantKingdomCatalog
+import com.example.data.datasource.PlantVarietyAndMediaCatalog
+import com.example.data.datasource.RegionalSuitabilityTag
 import com.example.data.model.AppLanguage
 import com.example.data.model.PlantKingdomEntry
 import com.example.data.model.PlantKingdomGroup
@@ -110,6 +118,7 @@ fun PlantKingdomLibraryScreen(
     var selectedGroupTabIndex by remember { mutableIntStateOf(0) } // 0 = All, 1..7 = groups
     var selectedFilter by remember { mutableStateOf<PlantSearchFilter?>(null) }
     var selectedSeason by remember { mutableStateOf<PlantSeasonalCollection?>(null) }
+    var selectedRegion by remember { mutableStateOf<RegionalSuitabilityTag?>(null) }
 
     val publishedPlants = remember(allPlants) {
         allPlants.filter { it.isPublishedForPublic() }
@@ -118,13 +127,15 @@ fun PlantKingdomLibraryScreen(
     val groups = remember { PlantKingdomGroup.values().toList() }
     val selectedGroup: PlantKingdomGroup? = if (selectedGroupTabIndex == 0) null else groups.getOrNull(selectedGroupTabIndex - 1)
 
-    val filteredPlants = remember(publishedPlants, searchQuery, selectedGroup, selectedFilter, selectedSeason) {
+    val filteredPlants = remember(publishedPlants, searchQuery, selectedGroup, selectedFilter, selectedSeason, selectedRegion) {
         publishedPlants.filter { plant ->
             val matchGroup = selectedGroup == null || plant.belongsToGroup(selectedGroup)
             val matchFilter = selectedFilter == null || plant.matchesFilter(selectedFilter!!)
             val matchSeason = selectedSeason == null || plant.matchesSeasonal(selectedSeason!!)
+            val matchRegion = selectedRegion == null ||
+                PlantVarietyAndMediaCatalog.inferRegionalSuitability(plant).contains(selectedRegion!!)
             val matchSearch = plant.matchesSearch(searchQuery)
-            matchGroup && matchFilter && matchSeason && matchSearch
+            matchGroup && matchFilter && matchSeason && matchRegion && matchSearch
         }
     }
 
@@ -372,6 +383,26 @@ fun PlantKingdomLibraryScreen(
                     }
                 }
 
+                // Regional Climate Suitability Filter Row
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(RegionalSuitabilityTag.values()) { region ->
+                        val selected = selectedRegion == region
+                        FilterChip(
+                            selected = selected,
+                            onClick = { selectedRegion = if (selected) null else region },
+                            modifier = Modifier.testTag("plant_region_${region.code}"),
+                            label = { Text(region.getDisplayName(currentLanguage), fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = RoyalGreenEmerald,
+                                selectedLabelColor = RoyalSoftGold
+                            )
+                        )
+                    }
+                }
+
                 // Count Summary
                 Row(
                     modifier = Modifier
@@ -390,7 +421,7 @@ fun PlantKingdomLibraryScreen(
                         color = RoyalSoftGold,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (selectedFilter != null || selectedSeason != null || searchQuery.isNotBlank()) {
+                    if (selectedFilter != null || selectedSeason != null || selectedRegion != null || searchQuery.isNotBlank()) {
                         Text(
                             text = when (currentLanguage) {
                                 AppLanguage.BENGALI -> "ফিল্টার মুছুন"
@@ -403,6 +434,7 @@ fun PlantKingdomLibraryScreen(
                                 .clickable {
                                     selectedFilter = null
                                     selectedSeason = null
+                                    selectedRegion = null
                                     searchQuery = ""
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -416,6 +448,61 @@ fun PlantKingdomLibraryScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (searchQuery.isBlank() && selectedGroupTabIndex == 0 && selectedFilter == null && selectedSeason == null && selectedRegion == null) {
+                        item(key = "nursery_showcase_banner") {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.6f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("plant_kingdom_showcase_banner")
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth().height(126.dp)) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.img_nursery_saplings_tray_1795520198312),
+                                        contentDescription = "Certified Nursery Saplings",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(Color(0x33042419), Color(0xDC042419))
+                                                )
+                                            )
+                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(12.dp)
+                                    ) {
+                                        Text(
+                                            text = when (currentLanguage) {
+                                                AppLanguage.BENGALI -> "১৬৭+ প্রজাতি ও যাচাইকৃত জাত"
+                                                AppLanguage.HINDI -> "167+ प्रजातियाँ व सत्यापित किस्में"
+                                                AppLanguage.ENGLISH -> "167+ Species & Verified Cultivars"
+                                            },
+                                            color = RoyalSoftGold,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = when (currentLanguage) {
+                                                AppLanguage.BENGALI -> "প্রতিটি চারায় জলবায়ু উপযোগিতা ও ৪ ধাপের ছবি সিস্টেম"
+                                                AppLanguage.HINDI -> "हर पौधे के लिए जलवायु उपयुक्तता व 4-चरणीय फोटो प्रणाली"
+                                                AppLanguage.ENGLISH -> "Regional suitability tags & 4-stage photo provenance"
+                                            },
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (filteredPlants.isEmpty()) {
                         item {
                             Card(
@@ -605,6 +692,28 @@ private fun PlantSpeciesListCard(
                                     color = RoyalSuccessText
                                 )
                             }
+                        }
+                    }
+                    val varieties = remember(plant.plantId) {
+                        PlantVarietyAndMediaCatalog.getVarietiesForPlant(plant.plantId)
+                    }
+                    if (varieties.isNotEmpty()) {
+                        Surface(
+                            color = RoyalGreenSecondaryBg,
+                            border = BorderStroke(1.dp, RoyalGold.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = when (lang) {
+                                    AppLanguage.BENGALI -> "${varieties.size} জাত"
+                                    AppLanguage.HINDI -> "${varieties.size} किस्में"
+                                    AppLanguage.ENGLISH -> "${varieties.size} cultivars"
+                                },
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RoyalSoftGold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
                         }
                     }
                 }

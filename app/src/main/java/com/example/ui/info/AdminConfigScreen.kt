@@ -57,6 +57,7 @@ import com.example.data.local.config.AppConfigManager
 import com.example.data.model.AppLanguage
 import com.example.ui.theme.AgriGreenPrimary
 import com.example.ui.theme.AgriTextSecondary
+import com.example.util.L10n
 
 @Composable
 fun AdminConfigScreen(
@@ -66,7 +67,8 @@ fun AdminConfigScreen(
     onNavigateAdminAddCrop: () -> Unit = {},
     onNavigateBannerAdmin: () -> Unit = {},
     onNavigateMachineryAdmin: () -> Unit = {},
-    onNavigateTrustModeration: () -> Unit = {}
+    onNavigateTrustModeration: () -> Unit = {},
+    onNavigateVideoAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentConfig = remember { AppConfigManager.getConfig(context) }
@@ -97,6 +99,15 @@ fun AdminConfigScreen(
     var address by remember { mutableStateOf(currentConfig.businessAddress) }
     var hours by remember { mutableStateOf(currentConfig.supportHours) }
     var website by remember { mutableStateOf(currentConfig.officialWebsite) }
+
+    var grievanceName by remember { mutableStateOf(currentConfig.grievanceOfficerName) }
+    var grievanceEmail by remember { mutableStateOf(currentConfig.grievanceOfficerEmail) }
+    var grievancePhone by remember { mutableStateOf(currentConfig.grievanceOfficerPhone) }
+    var grievanceAddr by remember { mutableStateOf(currentConfig.grievanceOfficerAddress) }
+    var nodalName by remember { mutableStateOf(currentConfig.nodalOfficerName) }
+    var nodalContact by remember { mutableStateOf(currentConfig.nodalOfficerContact) }
+    var legalEntity by remember { mutableStateOf(currentConfig.legalEntityName) }
+    var gstinNumber by remember { mutableStateOf(currentConfig.gstinNumber) }
 
     @OptIn(ExperimentalLayoutApi::class)
     Scaffold(
@@ -383,6 +394,50 @@ fun AdminConfigScreen(
                             modifier = Modifier.heightIn(min = 48.dp).testTag("admin_goto_trust_moderation_btn")
                         ) {
                             Text("Moderation", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Krishi Shiksha Video Learning Studio Admin Card
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column(modifier = Modifier.widthIn(min = 180.dp, max = 480.dp)) {
+                            Text(
+                                text = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "🎬 কৃষি শিক্ষা — ভিডিও লার্নিং স্টুডিও (অ্যাডমিন)"
+                                    AppLanguage.HINDI -> "🎬 कृषि शिक्षा — वीडियो लर्निंग स्टूडियो (एडमिन)"
+                                    AppLanguage.ENGLISH -> "🎬 Krishi Shiksha — Video Learning Admin Studio"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "ভিডিও ফাইল, থাম্বনেইল, বাংলা-হিন্দি-ইংরেজি অডিও/সাবটাইটেল আপলোড ও প্রকাশনা"
+                                    AppLanguage.HINDI -> "वीडियो फ़ाइल, थंबनेल, बहुभाषी ऑडियो/सबटाइटल अपलोड और प्रकाशन प्रबंधन"
+                                    AppLanguage.ENGLISH -> "Upload farming videos, thumbnails, BN/HI/EN narration & publish lessons"
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                            )
+                        }
+                        Button(
+                            onClick = onNavigateVideoAdmin,
+                            colors = ButtonDefaults.buttonColors(containerColor = AgriGreenPrimary, contentColor = Color.White),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("admin_goto_video_learning_btn")
+                        ) {
+                            Text("Videos", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -731,6 +786,72 @@ fun AdminConfigScreen(
                 }
             }
 
+            // Statutory Grievance & Nodal Officers (India E-Commerce & IT Rules)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth().testTag("admin_statutory_officers_card")
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "⚖️ ${L10n.t("admin_statutory_title", currentLanguage)}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    OutlinedTextField(
+                        value = grievanceName,
+                        onValueChange = { grievanceName = it },
+                        label = { Text(L10n.t("admin_grievance_officer_name", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("admin_grievance_name_input")
+                    )
+                    OutlinedTextField(
+                        value = grievanceEmail,
+                        onValueChange = { grievanceEmail = it },
+                        label = { Text(L10n.t("admin_grievance_officer_email", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("admin_grievance_email_input")
+                    )
+                    OutlinedTextField(
+                        value = grievancePhone,
+                        onValueChange = { grievancePhone = it },
+                        label = { Text(L10n.t("admin_grievance_officer_phone", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("admin_grievance_phone_input")
+                    )
+                    OutlinedTextField(
+                        value = grievanceAddr,
+                        onValueChange = { grievanceAddr = it },
+                        label = { Text(L10n.t("admin_grievance_officer_addr", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("admin_grievance_addr_input")
+                    )
+                    OutlinedTextField(
+                        value = nodalName,
+                        onValueChange = { nodalName = it },
+                        label = { Text(L10n.t("admin_nodal_officer_name", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = nodalContact,
+                        onValueChange = { nodalContact = it },
+                        label = { Text(L10n.t("admin_nodal_officer_contact", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = legalEntity,
+                        onValueChange = { legalEntity = it },
+                        label = { Text(L10n.t("admin_legal_entity_name", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("admin_legal_entity_input")
+                    )
+                    OutlinedTextField(
+                        value = gstinNumber,
+                        onValueChange = { gstinNumber = it },
+                        label = { Text(L10n.t("admin_gstin_number", currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
             // Save Button
             Button(
                 onClick = {
@@ -757,7 +878,15 @@ fun AdminConfigScreen(
                         supportPhone = phone,
                         businessAddress = address,
                         supportHours = hours,
-                        officialWebsite = website
+                        officialWebsite = website,
+                        grievanceOfficerName = grievanceName.trim(),
+                        grievanceOfficerEmail = grievanceEmail.trim(),
+                        grievanceOfficerPhone = grievancePhone.trim(),
+                        grievanceOfficerAddress = grievanceAddr.trim(),
+                        nodalOfficerName = nodalName.trim(),
+                        nodalOfficerContact = nodalContact.trim(),
+                        legalEntityName = legalEntity.trim(),
+                        gstinNumber = gstinNumber.trim()
                     )
                     AppConfigManager.updateConfig(context, updated)
                     val savedMsg = when (currentLanguage) {

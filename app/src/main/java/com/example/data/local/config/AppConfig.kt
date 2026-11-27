@@ -44,8 +44,24 @@ data class AppConfig(
     val supportPhone: String = "1800-180-1551 (টোল ফ্রি কিষাণ কল সেন্টার)",
     val businessAddress: String = "কৃষক সাথী ডিজিটাল এগ্রি সেন্টার, জলপাইগুড়ি / কলকাতা, পশ্চিমবঙ্গ, ভারত - ৭০০০০১",
     val supportHours: String = "সোম - শনি: সকাল ৬:০০টা - রাত ১০:০০টা",
-    val officialWebsite: String = "https://krishaksathi.in"
+    val officialWebsite: String = "https://krishaksathi.in",
+
+    // Statutory Grievance & Nodal Officers (Empty by default until entered & verified by Business Owner)
+    val grievanceOfficerName: String = "",
+    val grievanceOfficerEmail: String = "",
+    val grievanceOfficerPhone: String = "",
+    val grievanceOfficerAddress: String = "",
+    val nodalOfficerName: String = "",
+    val nodalOfficerContact: String = "",
+    val legalEntityName: String = "",
+    val gstinNumber: String = ""
 ) {
+    fun hasCompleteStatutoryOfficers(): Boolean =
+        grievanceOfficerName.isNotBlank() &&
+            grievanceOfficerEmail.isNotBlank() &&
+            grievanceOfficerPhone.isNotBlank() &&
+            grievanceOfficerAddress.isNotBlank() &&
+            legalEntityName.isNotBlank()
     fun getSubtitle(lang: AppLanguage): String = when (lang) {
         AppLanguage.BENGALI -> appSubtitleBn
         AppLanguage.HINDI -> appSubtitleHi
@@ -154,6 +170,15 @@ object AppConfigManager {
     private const val KEY_SUPPORT_HOURS = "key_support_hours"
     private const val KEY_OFFICIAL_WEBSITE = "key_official_website"
 
+    private const val KEY_GRIEVANCE_NAME = "key_grievance_officer_name"
+    private const val KEY_GRIEVANCE_EMAIL = "key_grievance_officer_email"
+    private const val KEY_GRIEVANCE_PHONE = "key_grievance_officer_phone"
+    private const val KEY_GRIEVANCE_ADDR = "key_grievance_officer_addr"
+    private const val KEY_NODAL_NAME = "key_nodal_officer_name"
+    private const val KEY_NODAL_CONTACT = "key_nodal_officer_contact"
+    private const val KEY_LEGAL_ENTITY = "key_legal_entity_name"
+    private const val KEY_GSTIN = "key_gstin_number"
+
     private val _configState = MutableStateFlow(AppConfig())
     val configState: StateFlow<AppConfig> = _configState.asStateFlow()
 
@@ -194,7 +219,16 @@ object AppConfigManager {
             supportPhone = prefs.getString(KEY_SUPPORT_PHONE, default.supportPhone) ?: default.supportPhone,
             businessAddress = prefs.getString(KEY_BUSINESS_ADDRESS, default.businessAddress) ?: default.businessAddress,
             supportHours = prefs.getString(KEY_SUPPORT_HOURS, default.supportHours) ?: default.supportHours,
-            officialWebsite = prefs.getString(KEY_OFFICIAL_WEBSITE, default.officialWebsite) ?: default.officialWebsite
+            officialWebsite = prefs.getString(KEY_OFFICIAL_WEBSITE, default.officialWebsite) ?: default.officialWebsite,
+
+            grievanceOfficerName = prefs.getString(KEY_GRIEVANCE_NAME, default.grievanceOfficerName) ?: default.grievanceOfficerName,
+            grievanceOfficerEmail = prefs.getString(KEY_GRIEVANCE_EMAIL, default.grievanceOfficerEmail) ?: default.grievanceOfficerEmail,
+            grievanceOfficerPhone = prefs.getString(KEY_GRIEVANCE_PHONE, default.grievanceOfficerPhone) ?: default.grievanceOfficerPhone,
+            grievanceOfficerAddress = prefs.getString(KEY_GRIEVANCE_ADDR, default.grievanceOfficerAddress) ?: default.grievanceOfficerAddress,
+            nodalOfficerName = prefs.getString(KEY_NODAL_NAME, default.nodalOfficerName) ?: default.nodalOfficerName,
+            nodalOfficerContact = prefs.getString(KEY_NODAL_CONTACT, default.nodalOfficerContact) ?: default.nodalOfficerContact,
+            legalEntityName = prefs.getString(KEY_LEGAL_ENTITY, default.legalEntityName) ?: default.legalEntityName,
+            gstinNumber = prefs.getString(KEY_GSTIN, default.gstinNumber) ?: default.gstinNumber
         )
 
         _configState.value = config
@@ -239,6 +273,14 @@ object AppConfigManager {
             .putString(KEY_BUSINESS_ADDRESS, newConfig.businessAddress)
             .putString(KEY_SUPPORT_HOURS, newConfig.supportHours)
             .putString(KEY_OFFICIAL_WEBSITE, newConfig.officialWebsite)
+            .putString(KEY_GRIEVANCE_NAME, newConfig.grievanceOfficerName)
+            .putString(KEY_GRIEVANCE_EMAIL, newConfig.grievanceOfficerEmail)
+            .putString(KEY_GRIEVANCE_PHONE, newConfig.grievanceOfficerPhone)
+            .putString(KEY_GRIEVANCE_ADDR, newConfig.grievanceOfficerAddress)
+            .putString(KEY_NODAL_NAME, newConfig.nodalOfficerName)
+            .putString(KEY_NODAL_CONTACT, newConfig.nodalOfficerContact)
+            .putString(KEY_LEGAL_ENTITY, newConfig.legalEntityName)
+            .putString(KEY_GSTIN, newConfig.gstinNumber)
             .apply()
 
         _configState.value = newConfig

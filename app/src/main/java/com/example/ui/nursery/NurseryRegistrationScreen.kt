@@ -269,7 +269,14 @@ fun NurseryRegistrationScreen(
                                         Toast.makeText(context, draftMsg, Toast.LENGTH_SHORT).show()
                                     } catch (e: CancellationException) {
                                         throw e
-                                    } catch (_: Exception) { }
+                                    } catch (e: Exception) {
+                                        val errPrefix = when (currentLanguage) {
+                                            AppLanguage.BENGALI -> "খসড়া সংরক্ষণ ব্যর্থ"
+                                            AppLanguage.HINDI -> "ड्राफ्ट सहेजना विफल"
+                                            AppLanguage.ENGLISH -> "Failed to save draft"
+                                        }
+                                        Toast.makeText(context, "$errPrefix: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),

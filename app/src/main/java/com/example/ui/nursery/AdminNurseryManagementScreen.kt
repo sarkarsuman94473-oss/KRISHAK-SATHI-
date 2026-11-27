@@ -36,6 +36,7 @@ import com.example.data.model.NurseryApplication
 import com.example.data.model.NurseryApplicationStatus
 import com.example.data.remote.NurseryApplicationRepository
 import com.example.ui.machinery.AdminMachineryManagementContent
+import com.example.ui.partner.AdminPartnerApprovalsPanel
 import com.example.util.L10n
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -58,7 +59,16 @@ fun AdminNurseryManagementScreen(
     val applications by repository.allApplicationsFlow.collectAsState(initial = emptyList())
 
     val adminSession = remember { UserSessionManager.getSession(context) }
-    val adminEmail = adminSession?.email ?: "sarkarsuman94473@gmail.com"
+    val hasAdminAccess = remember(adminSession) { UserSessionManager.isAdmin(context) }
+    val adminEmail = adminSession?.email.orEmpty()
+
+    if (!hasAdminAccess) {
+        LaunchedEffect(Unit) {
+            Toast.makeText(context, "Admin sign-in required.", Toast.LENGTH_SHORT).show()
+            onNavigateBack()
+        }
+        return
+    }
 
     var adminSectionTab by remember { mutableIntStateOf(0) } // 0: Partner Applications, 1: WB Directory, 2: Plant Kingdom
     var selectedFilter by remember { mutableStateOf<String?>("ALL") }
@@ -200,6 +210,22 @@ fun AdminNurseryManagementScreen(
                             )
                         }
                     )
+                    Tab(
+                        selected = adminSectionTab == 4,
+                        onClick = { adminSectionTab = 4 },
+                        modifier = Modifier.testTag("admin_tab_partner_approvals"),
+                        text = {
+                            Text(
+                                text = when (currentLanguage) {
+                                    AppLanguage.BENGALI -> "মাল্টি-রোল পার্টনার অনুমোদন"
+                                    AppLanguage.HINDI -> "पार्टनर भूमिका अनुमोदन"
+                                    AppLanguage.ENGLISH -> "Partner Approvals"
+                                },
+                                fontWeight = if (adminSectionTab == 4) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 12.sp
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -222,6 +248,13 @@ fun AdminNurseryManagementScreen(
         } else if (adminSectionTab == 3) {
             Box(modifier = Modifier.fillMaxSize().widthIn(max = 760.dp)) {
                 AdminMachineryManagementContent(
+                    currentLanguage = currentLanguage,
+                    adminEmail = adminEmail
+                )
+            }
+        } else if (adminSectionTab == 4) {
+            Box(modifier = Modifier.fillMaxSize().widthIn(max = 760.dp)) {
+                AdminPartnerApprovalsPanel(
                     currentLanguage = currentLanguage,
                     adminEmail = adminEmail
                 )
